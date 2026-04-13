@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VyapaarIQ — Analytics Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#060c18;--bg2:#080f1e;--sur:#0d1528;--card:#0d1628;--card2:#111c34;--card3:#0a1220;
+  --bd:rgba(0,212,255,.10);--bd2:rgba(91,140,255,.13);--bds:rgba(0,212,255,.25);
+  --tx:#e8f0ff;--tx2:#a0b4d0;--mu:#4a637a;--mu2:#3a5268;
+  --cyan:#00d4ff;--blue:#5b8cff;--vio:#8a7cff;
+  --green:#22d87a;--amber:#f59e0b;--red:#ef4444;--pink:#f472b6;
+  --glow:rgba(0,212,255,.15);--glowb:rgba(91,140,255,.18);
+  --g1:linear-gradient(135deg,#00d4ff,#5b8cff);
+  --g2:linear-gradient(135deg,#5b8cff,#8a7cff);
+  --g3:linear-gradient(135deg,#00d4ff,#8a7cff);
+  --g-green:linear-gradient(135deg,#22d87a,#00d4ff);
+  --g-amber:linear-gradient(135deg,#f59e0b,#ef4444);
+  --f:'Plus Jakarta Sans',sans-serif;--fd:'Syne',sans-serif;--fm:'DM Mono',monospace;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --sb:240px;--top:56px;--r:12px;--ri:10px;
+}
+[data-theme="light"]{
+  --bg:#f0f4ff;--bg2:#e8efff;--sur:#fff;--card:#f8faff;--card2:#eef2ff;--card3:#f4f7ff;
+  --tx:#0a0e1a;--tx2:#2c3e6a;--mu:#7a90b0;--mu2:#9aadc8;
+  --bd:rgba(0,100,200,.10);--bd2:rgba(91,140,255,.14);--bds:rgba(0,100,200,.28);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%}
+body{min-height:100%;background:var(--bg);color:var(--tx);font-family:var(--f);transition:background .3s,color .3s}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--cyan);border-radius:3px}
+::selection{background:rgba(0,212,255,.22);color:var(--cyan)}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(0,212,255,.013) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.013) 1px,transparent 1px);
+  background-size:48px 48px}
+[data-theme="light"] body::before{opacity:.4}
+
+/* TOPBAR */
+.topbar{position:sticky;top:0;height:var(--top);background:rgba(6,12,24,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 32px}
+[data-theme="light"] .topbar{background:rgba(240,244,255,.92)}
+.topbar-left{display:flex;align-items:center;gap:14px}
+.tb-logo{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-size:16px;font-weight:800;text-decoration:none}
+.logo-icon{width:28px;height:28px;border-radius:7px;background:var(--g1);display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 12px var(--glow)}
+.logo-text{background:var(--g1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo-iq{background:var(--g2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tb-divider{width:1px;height:20px;background:var(--bd)}
+.page-title{font-family:var(--fd);font-size:14px;font-weight:800;letter-spacing:-.3px;color:var(--cyan)}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.top-btn{display:inline-flex;align-items:center;gap:7px;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;font-family:var(--fm);border:1px solid var(--bd);color:var(--tx2);background:transparent;cursor:pointer;transition:all .22s;letter-spacing:.2px;text-decoration:none}
+.top-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.06)}
+.top-btn.primary{background:var(--g1);color:#000;border-color:transparent;font-weight:700}
+.top-btn.primary:hover{box-shadow:0 4px 20px var(--glow);transform:translateY(-1px)}
+.tog{width:38px;height:20px;border-radius:10px;background:var(--sur);border:1px solid var(--bd);cursor:pointer;display:flex;align-items:center;padding:2px}
+.tok{width:14px;height:14px;border-radius:50%;background:var(--g1);font-size:8px;display:flex;align-items:center;justify-content:center;transition:transform .3s var(--ease)}
+[data-theme="light"] .tok{transform:translateX(18px)}
+.live-badge{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--green);font-family:var(--fm);letter-spacing:.5px;background:rgba(34,216,122,.06);border:1px solid rgba(34,216,122,.18);border-radius:50px;padding:3px 10px}
+.live-dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+/* PAGE LAYOUT */
+.page{position:relative;z-index:1;padding:32px 32px 72px;max-width:1440px;margin:0 auto}
+
+/* PAGE HEADER */
+.page-hero{margin-bottom:36px;padding-bottom:28px;border-bottom:1px solid var(--bd)}
+.page-hero-inner{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.hero-tag{font-size:9.5px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--cyan);font-family:var(--fm);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.hero-tag::before{content:'';width:16px;height:1.5px;background:var(--cyan);border-radius:2px;opacity:.6}
+.hero-title{font-family:var(--fd);font-size:28px;font-weight:800;letter-spacing:-1px;line-height:1.15;margin-bottom:6px}
+.hero-sub{font-size:13.5px;color:var(--tx2);line-height:1.6}
+.hero-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* SECTION */
+.section{margin-bottom:44px}
+.sec-head{margin-bottom:20px;display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.sec-tag{font-size:9.5px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--cyan);font-family:var(--fm);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.sec-tag::before{content:'';width:14px;height:1.5px;background:var(--cyan);border-radius:2px;opacity:.6}
+.sec-title{font-family:var(--fd);font-size:18px;font-weight:800;letter-spacing:-.5px}
+.sec-sub{font-size:12.5px;color:var(--tx2);margin-top:4px;line-height:1.5}
+.sec-action a,.sec-action button{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;font-size:11.5px;font-weight:600;font-family:var(--fm);border:1px solid var(--bd);color:var(--tx2);background:transparent;cursor:pointer;transition:all .22s;text-decoration:none}
+.sec-action a:hover,.sec-action button:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.06)}
+
+/* KPI GRID — 6 cols */
+.kpi-grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.kpi-card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:18px 18px 16px;position:relative;overflow:hidden;transition:all .3s var(--ease)}
+.kpi-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;opacity:0;transition:opacity .3s}
+.kpi-card:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.18);border-color:var(--bds)}
+.kpi-card:hover::after{opacity:1}
+.kpi-card:nth-child(1)::after{background:var(--g1)}.kpi-card:nth-child(2)::after{background:var(--g-green)}.kpi-card:nth-child(3)::after{background:var(--g2)}.kpi-card:nth-child(4)::after{background:var(--g-green)}.kpi-card:nth-child(5)::after{background:var(--g-amber)}.kpi-card:nth-child(6)::after{background:var(--g-amber)}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.kpi-lbl{font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1.2px;font-family:var(--fm)}
+.kpi-ico{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.kpi-val{font-size:22px;font-weight:800;letter-spacing:-1px;font-family:var(--fd);margin-bottom:4px}
+.kpi-ch{font-size:10.5px;font-weight:600;display:flex;align-items:center;gap:4px;font-family:var(--fm)}
+.kpi-ch.up{color:var(--green)}.kpi-ch.down{color:var(--red)}.kpi-ch.warn{color:var(--amber)}.kpi-ch.neu{color:var(--cyan)}
+.kpi-shimmer{height:22px;border-radius:6px;background:linear-gradient(90deg,var(--bd) 25%,rgba(0,212,255,.08) 50%,var(--bd) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;margin-bottom:4px;width:80%}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* GRID LAYOUTS */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.grid-1-2{display:grid;grid-template-columns:1fr 2fr;gap:16px}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.card-head{padding:18px 22px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-family:var(--fd);font-size:14px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+.card-title-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.card-body{padding:0 22px 22px}
+.card-badge{font-size:9px;font-weight:700;padding:3px 8px;border-radius:50px;font-family:var(--fm)}
+.badge-cyan{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.18)}
+.badge-green{background:rgba(34,216,122,.08);color:var(--green);border:1px solid rgba(34,216,122,.18)}
+.badge-amber{background:rgba(245,158,11,.08);color:var(--amber);border:1px solid rgba(245,158,11,.18)}
+.badge-vio{background:rgba(138,124,255,.08);color:var(--vio);border:1px solid rgba(138,124,255,.18)}
+.badge-red{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18)}
+
+/* CHART — BARS */
+.chart-area{padding:0 4px;position:relative}
+.bars-wrap{display:flex;align-items:flex-end;gap:8px;height:120px}
+.bar-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;cursor:pointer}
+.bar-fill{width:100%;border-radius:5px 5px 0 0;transition:height .8s var(--ease);min-height:3px;opacity:.85;position:relative}
+.bar-fill:hover{opacity:1}
+.bar-fill::before{content:attr(data-tip);position:absolute;top:-28px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--bd);color:var(--tx);font-size:9px;font-family:var(--fm);padding:2px 7px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s}
+.bar-fill:hover::before{opacity:1}
+.bar-label{font-size:8.5px;color:var(--mu);font-family:var(--fm)}
+.chart-x{display:flex;justify-content:space-between;padding:8px 4px 0;font-size:9px;color:var(--mu);font-family:var(--fm)}
+.chart-y-lines{position:absolute;top:0;left:4px;right:4px;bottom:20px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.y-line{width:100%;height:1px;background:rgba(255,255,255,.04)}
+
+/* PROFIT TABLE */
+.profit-rows{display:flex;flex-direction:column;gap:12px}
+.profit-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:rgba(255,255,255,.02);border:1px solid var(--bd);border-radius:9px;transition:border-color .2s}
+.profit-row:hover{border-color:rgba(0,212,255,.15)}
+.pr-label{font-size:12px;font-weight:600;color:var(--tx2);font-family:var(--fm);display:flex;align-items:center;gap:8px}
+.pr-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pr-val{font-size:16px;font-weight:800;font-family:var(--fd);letter-spacing:-.5px}
+.pr-bar-wrap{flex:1;margin:0 16px;height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden}
+.pr-bar{height:100%;border-radius:3px;transition:width 1s var(--ease)}
+
+/* PIE CHART */
+.pie-wrap{display:flex;align-items:center;gap:28px;padding:4px 0}
+.pie-canvas{position:relative;flex-shrink:0}
+.pie-legend{flex:1;display:flex;flex-direction:column;gap:8px}
+.pie-legend-item{display:flex;align-items:center;gap:9px;font-size:12px;font-family:var(--fm)}
+.pie-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.pie-lbl{color:var(--tx2);flex:1}
+.pie-pct{font-weight:700;color:var(--tx)}
+
+/* TABLE */
+.data-table-wrap{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.data-table thead{background:rgba(0,212,255,.04);border-bottom:1px solid var(--bd)}
+.data-table th{padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;font-family:var(--fm);white-space:nowrap}
+.data-table td{padding:11px 14px;border-bottom:1px solid var(--bd);color:var(--tx2);font-family:var(--fm)}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover td{background:rgba(0,212,255,.025);color:var(--tx)}
+.mono{color:var(--cyan)}
+.tbl-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:50px;font-size:10px;font-weight:700;font-family:var(--fm)}
+.tb-fast{background:rgba(34,216,122,.1);color:var(--green);border:1px solid rgba(34,216,122,.2)}
+.tb-dead{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.18)}
+.tb-low{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.18)}
+.tb-reorder{background:rgba(138,124,255,.1);color:var(--vio);border:1px solid rgba(138,124,255,.18)}
+.inline-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,212,255,.2);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-row td{padding:28px;text-align:center;color:var(--mu);font-size:12px}
+.empty-state{padding:40px;text-align:center;color:var(--mu);font-family:var(--fm);font-size:12.5px}
+.empty-icon{font-size:28px;margin-bottom:10px;opacity:.5}
+
+/* CUSTOMER CARDS */
+.cust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.cust-card{background:rgba(0,212,255,.03);border:1px solid var(--bd);border-radius:10px;padding:14px 16px;transition:all .22s}
+.cust-card:hover{border-color:rgba(0,212,255,.2);transform:translateY(-2px)}
+.cust-rank{font-size:9px;font-weight:700;color:var(--mu);font-family:var(--fm);letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.rank-badge{background:var(--g1);color:#000;padding:1px 6px;border-radius:50px;font-size:9px;font-weight:800}
+.cust-name{font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px}
+.cust-val{font-size:18px;font-weight:800;font-family:var(--fd);letter-spacing:-.5px;background:var(--g1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.cust-meta{font-size:10.5px;color:var(--mu);font-family:var(--fm);margin-top:3px}
+
+/* GROWTH TREND MINI BARS */
+.mini-bars{display:flex;align-items:flex-end;gap:4px;height:40px}
+.mini-bar{flex:1;border-radius:3px 3px 0 0;background:var(--g-green);opacity:.7;transition:height .6s var(--ease),opacity .2s;cursor:pointer}
+.mini-bar:hover{opacity:1}
+
+/* RATIO SPLIT */
+.ratio-bar{height:10px;border-radius:5px;overflow:hidden;display:flex;margin:12px 0}
+.ratio-seg{height:100%;transition:width .8s var(--ease)}
+.ratio-legend{display:flex;gap:20px;font-size:11.5px;font-family:var(--fm)}
+.ratio-item{display:flex;align-items:center;gap:7px}
+.ratio-dot{width:10px;height:10px;border-radius:3px}
+.ratio-label{color:var(--tx2)}
+.ratio-pct{font-weight:700;color:var(--tx);margin-left:4px}
+
+/* DIVIDER */
+.sec-divider{height:1px;background:linear-gradient(90deg,transparent,var(--bd),transparent);margin:0 0 44px}
+
+/* TOAST */
+#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:11px;font-size:13px;font-weight:600;font-family:var(--fm);pointer-events:auto;min-width:240px;max-width:360px;animation:toastIn .35s var(--ease);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.toast.suc{background:rgba(34,216,122,.12);border:1px solid rgba(34,216,122,.28);color:var(--green)}
+.toast.err{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.28);color:#f87171}
+.toast.inf{background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.22);color:var(--cyan)}
+.toast.out{animation:toastOut .35s var(--ease) forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateX(24px)}}
+.toast-close{margin-left:auto;background:none;border:none;color:inherit;cursor:pointer;opacity:.6;font-size:14px;padding:0 0 0 8px}
+
+/* SPARKLINE */
+.sparkline-wrap{display:flex;gap:3px;align-items:flex-end;height:28px;margin-top:6px}
+.spark-bar{width:4px;border-radius:2px;background:var(--cyan);opacity:.5;transition:opacity .2s}
+.spark-bar:hover{opacity:1}
+
+/* RESPONSIVE */
+@media(max-width:1200px){.kpi-grid-6{grid-template-columns:repeat(3,1fr)}.grid-2-1,.grid-1-2{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr 1fr}.cust-grid{grid-template-columns:1fr 1fr 1fr}}
+@media(max-width:768px){.kpi-grid-6{grid-template-columns:1fr 1fr}.grid-2,.grid-3,.grid-2-1,.grid-1-2{grid-template-columns:1fr}.cust-grid{grid-template-columns:1fr 1fr}.page{padding:20px 16px 60px}.topbar{padding:0 16px}.hero-actions .top-btn{font-size:11px;padding:5px 10px}}
+@media(max-width:480px){.kpi-grid-6,.cust-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <a class="tb-logo" href="/dashboard">
+      <div class="logo-icon">📊</div>
+      <span><span class="logo-text">Vyapaar</span><span class="logo-iq">IQ</span></span>
+    </a>
+    <div class="tb-divider"></div>
+    <span class="page-title">Analytics</span>
+  </div>
+  <div class="topbar-right">
+    <div class="live-badge"><span class="live-dot"></span>LIVE</div>
+    <button class="top-btn" onclick="refreshAll()">⟳ Refresh</button>
+    <a class="top-btn" href="/import">⬆️ Import Dataset</a>
+    <button class="tog" onclick="toggleTheme()" title="Toggle theme"><div class="tok" id="knob">🌙</div></button>
+    <a class="top-btn primary" href="/dashboard">← Dashboard</a>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- PAGE HERO -->
+  <div class="page-hero">
+    <div class="page-hero-inner">
+      <div>
+        <div class="hero-tag">📊 Business Intelligence</div>
+        <h1 class="hero-title">Analytics Dashboard</h1>
+        <p class="hero-sub">Full-spectrum insights across sales, profit, inventory, customers and expenses.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="top-btn" onclick="refreshAll()">⟳ Refresh All</button>
+        <a class="top-btn" href="/dashboard">← Back to Dashboard</a>
+        <a class="top-btn primary" href="/import">⬆️ Import Dataset</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 1: EXECUTIVE KPIs -->
+  <div class="section">
+    <div class="sec-head">
+      <div>
+        <div class="sec-tag">📈 Executive Summary</div>
+        <h2 class="sec-title">Key Performance Indicators</h2>
+        <p class="sec-sub">Monthly snapshot across all core business metrics.</p>
+      </div>
+    </div>
+    <div class="kpi-grid-6" id="kpiGrid">
+      <div class="kpi-card">
+        <div class="kpi-top"><span class="kpi-lbl">Monthly Revenue</span><div class="kpi-ico" style="background:rgba(0,212,255,.1)">💰</div></div>
+        <div class="kpi-val" id="k-revenue" style="background:var(--g1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"><div class="kpi-shimmer"></div></div>
+        <div class="kpi-ch up" id="k-revenue-ch">↑ Loading…</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-top"><span class="kpi-lbl">Monthly Profit</span><div class="kpi-ico" style="background:rgba(34,216,122,.1)">📈</div></div>
+        <div class="kpi-val" id="k-profit" style="background:var(--g-green);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"><div class="kpi-shimmer"></div></div>
+        <div class="kpi-ch up" id="k-profit-ch">↑ Loading…</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-top"><span class="kpi-lbl">Avg Order Value</span><div class="kpi-ico" style="background:rgba(91,140,255,.1)">🧾</div></div>
+        <div class="kpi-val" id="k-aov" style="background:var(--g2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"><div class="kpi-shimmer"></div></div>
+        <div class="kpi-ch neu" id="k-aov-ch">● Loading…</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-top"><span class="kpi-lbl">Customer Growth</span><div class="kpi-ico" style="background:rgba(34,216,122,.1)">👥</div></div>
+        <div class="kpi-val" id="k-cgrowth" style="background:var(--g-green);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"><div class="kpi-shimmer"></div></div>
+        <div class="kpi-ch up" id="k-cgrowth-ch">↑ Loading…</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-top"><span class="kpi-lbl">Expense Ratio</span><div class="kpi-ico" style="background:rgba(245,158,11,.1)">📉</div></div>
+        <div class="kpi-val" id="k-expratio" style="background:var(--g-amber);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"><div class="kpi-shimmer"></div></div>
+        <div class="kpi-ch warn" id="k-expratio-ch">⚠ Loading…</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-top"><span class="kpi-lbl">Stock Risk Score</span><div class="kpi-ico" style="background:rgba(239,68,68,.1)">⚠️</div></div>
+        <div class="kpi-val" id="k-stockrisk" style="background:var(--g-amber);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"><div class="kpi-shimmer"></div></div>
+        <div class="kpi-ch warn" id="k-stockrisk-ch">⚠ Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-divider"></div>
+
+  <!-- SECTION 2: SALES TREND -->
+  <div class="section">
+    <div class="sec-head">
+      <div>
+        <div class="sec-tag">📊 Revenue Intelligence</div>
+        <h2 class="sec-title">Sales Trend</h2>
+        <p class="sec-sub">Last 6 months revenue performance and growth trajectory.</p>
+      </div>
+      <div class="sec-action"><button onclick="loadSalesTrend()">⟳ Refresh</button></div>
+    </div>
+    <div class="grid-2-1">
+      <!-- Bar Chart -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><div class="card-title-icon" style="background:rgba(0,212,255,.1)">📊</div>Monthly Revenue (₹)</div>
+          <span class="card-badge badge-cyan" id="trendPeriod">6-month view</span>
+        </div>
+        <div class="card-body">
+          <div class="chart-area" style="position:relative">
+            <div class="bars-wrap" id="trendBars"></div>
+            <div class="chart-x" id="trendLabels"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Stats column -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card">
+          <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(34,216,122,.1)">📈</div>Growth Stats</div></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:12px" id="growthStats">
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)"><span style="font-size:12px;color:var(--tx2);font-family:var(--fm)">Peak Month</span><span class="mono" style="font-size:12px;font-weight:700" id="gs-peak">—</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)"><span style="font-size:12px;color:var(--tx2);font-family:var(--fm)">Lowest Month</span><span style="font-size:12px;font-weight:700;color:var(--amber);font-family:var(--fm)" id="gs-low">—</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)"><span style="font-size:12px;color:var(--tx2);font-family:var(--fm)">MoM Growth</span><span style="font-size:12px;font-weight:700;color:var(--green);font-family:var(--fm)" id="gs-mom">—</span></div>
+              <div style="display:flex;justify-content:space-between;padding:10px 0"><span style="font-size:12px;color:var(--tx2);font-family:var(--fm)">6M Total</span><span style="font-size:14px;font-weight:800;font-family:var(--fd);background:var(--g1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" id="gs-total">—</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(138,124,255,.1)">🎯</div>Revenue Target</div></div>
+          <div class="card-body">
+            <div style="margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <span style="font-size:11px;color:var(--tx2);font-family:var(--fm)">Monthly Target</span>
+                <span class="mono" style="font-size:11px;font-weight:700" id="targetPct">78%</span>
+              </div>
+              <div style="height:8px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden">
+                <div id="targetBar" style="height:100%;border-radius:4px;background:var(--g1);width:0%;transition:width 1s var(--ease)"></div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--mu);font-family:var(--fm)">Target: ₹5,00,000 / month</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-divider"></div>
+
+  <!-- SECTION 3: PROFIT INTELLIGENCE -->
+  <div class="section">
+    <div class="sec-head">
+      <div>
+        <div class="sec-tag">💹 Profit Analysis</div>
+        <h2 class="sec-title">Profit Intelligence Panel</h2>
+        <p class="sec-sub">Revenue, cost, and margin breakdown.</p>
+      </div>
+      <div class="sec-action"><button onclick="loadProfitAnalysis()">⟳ Refresh</button></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(34,216,122,.1)">💹</div>P&L Breakdown</div></div>
+        <div class="card-body">
+          <div class="profit-rows" id="profitRows">
+            <div class="profit-row"><span class="pr-label"><span class="pr-dot" style="background:var(--cyan)"></span>Revenue</span><div class="pr-bar-wrap"><div class="pr-bar" style="background:var(--g1);width:0%" id="rev-bar"></div></div><span class="pr-val" id="pnl-rev" style="color:var(--cyan)">—</span></div>
+            <div class="profit-row"><span class="pr-label"><span class="pr-dot" style="background:var(--red)"></span>Cost of Goods</span><div class="pr-bar-wrap"><div class="pr-bar" style="background:var(--g-amber);width:0%" id="cost-bar"></div></div><span class="pr-val" id="pnl-cost" style="color:var(--red)">—</span></div>
+            <div class="profit-row"><span class="pr-label"><span class="pr-dot" style="background:var(--amber)"></span>Expenses</span><div class="pr-bar-wrap"><div class="pr-bar" style="background:linear-gradient(90deg,var(--amber),var(--red));width:0%" id="exp-bar"></div></div><span class="pr-val" id="pnl-exp" style="color:var(--amber)">—</span></div>
+            <div class="profit-row" style="background:rgba(34,216,122,.04);border-color:rgba(34,216,122,.15)"><span class="pr-label"><span class="pr-dot" style="background:var(--green)"></span>Net Profit</span><div class="pr-bar-wrap"><div class="pr-bar" style="background:var(--g-green);width:0%" id="profit-bar"></div></div><span class="pr-val" id="pnl-profit" style="color:var(--green)">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(138,124,255,.1)">📐</div>Margin Analysis</div></div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:16px" id="marginStats">
+            <div style="padding:16px;background:rgba(34,216,122,.04);border:1px solid rgba(34,216,122,.12);border-radius:10px">
+              <div style="font-size:10px;color:var(--mu);font-family:var(--fm);letter-spacing:1px;margin-bottom:6px">GROSS MARGIN</div>
+              <div id="mgn-gross" style="font-size:28px;font-weight:800;font-family:var(--fd);letter-spacing:-1px;background:var(--g-green);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">—</div>
+              <div style="font-size:11px;color:var(--mu);font-family:var(--fm);margin-top:4px" id="mgn-gross-trend">Revenue after COGS</div>
+            </div>
+            <div style="padding:16px;background:rgba(91,140,255,.04);border:1px solid rgba(91,140,255,.12);border-radius:10px">
+              <div style="font-size:10px;color:var(--mu);font-family:var(--fm);letter-spacing:1px;margin-bottom:6px">NET PROFIT MARGIN</div>
+              <div id="mgn-net" style="font-size:28px;font-weight:800;font-family:var(--fd);letter-spacing:-1px;background:var(--g2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">—</div>
+              <div style="font-size:11px;color:var(--mu);font-family:var(--fm);margin-top:4px" id="mgn-net-trend">After all expenses</div>
+            </div>
+            <div style="padding:14px;background:rgba(0,212,255,.03);border:1px solid var(--bd);border-radius:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:11px;color:var(--tx2);font-family:var(--fm)">ROI (Return on Investment)</span>
+                <span id="mgn-roi" style="font-size:15px;font-weight:800;font-family:var(--fd);color:var(--cyan)">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-divider"></div>
+
+  <!-- SECTION 4: INVENTORY INTELLIGENCE -->
+  <div class="section">
+    <div class="sec-head">
+      <div>
+        <div class="sec-tag">📦 Inventory Analysis</div>
+        <h2 class="sec-title">Inventory Intelligence Panel</h2>
+        <p class="sec-sub">Fast movers, dead stock, alerts and reorder suggestions.</p>
+      </div>
+      <div class="sec-action"><button onclick="loadInventoryInsights()">⟳ Refresh</button></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><div class="card-title-icon" style="background:rgba(245,158,11,.1)">📦</div>Inventory Analysis Table</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="card-badge tb-fast">🚀 Fast Moving</span>
+          <span class="card-badge tb-dead">💤 Dead Stock</span>
+          <span class="card-badge tb-low">⚠ Low Stock</span>
+          <span class="card-badge tb-reorder">🔄 Reorder</span>
+        </div>
+      </div>
+      <div class="card-body" style="padding-top:12px">
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead><tr><th>#</th><th>Product Name</th><th>Category</th><th>Stock Qty</th><th>Velocity</th><th>Days Left</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="inventoryTbody"><tr class="loading-row"><td colspan="8"><span class="inline-spinner"></span>Fetching inventory insights…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-divider"></div>
+
+  <!-- SECTION 5: CUSTOMER INTELLIGENCE -->
+  <div class="section">
+    <div class="sec-head">
+      <div>
+        <div class="sec-tag">👥 Customer Intelligence</div>
+        <h2 class="sec-title">Customer Analytics</h2>
+        <p class="sec-sub">Top customers, growth trends and loyalty segmentation.</p>
+      </div>
+      <div class="sec-action"><button onclick="loadCustomerInsights()">⟳ Refresh</button></div>
+    </div>
+    <div class="grid-2">
+      <!-- Top Customers -->
+      <div class="card">
+        <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(91,140,255,.1)">🏆</div>Top Customers by Revenue</div></div>
+        <div class="card-body"><div class="cust-grid" id="topCustomers"><div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--mu);font-family:var(--fm);font-size:12px"><span class="inline-spinner"></span>Loading…</div></div></div>
+      </div>
+      <!-- Growth + Ratio -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="card">
+          <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(34,216,122,.1)">📈</div>Customer Growth Trend</div></div>
+          <div class="card-body">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:11px;color:var(--tx2);font-family:var(--fm)">New customers (6 months)</span>
+              <span class="mono" style="font-size:11px;font-weight:700" id="custGrowthTotal">—</span>
+            </div>
+            <div class="mini-bars" id="custGrowthBars"></div>
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:9px;color:var(--mu);font-family:var(--fm)" id="custGrowthLabels"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(244,114,182,.1)">🔁</div>Repeat vs New Customers</div></div>
+          <div class="card-body">
+            <div class="ratio-bar" id="custRatioBar">
+              <div class="ratio-seg" style="background:var(--g1);width:0%" id="ratio-repeat"></div>
+              <div class="ratio-seg" style="background:var(--g-green);width:0%" id="ratio-new"></div>
+            </div>
+            <div class="ratio-legend">
+              <div class="ratio-item"><div class="ratio-dot" style="background:var(--cyan)"></div><span class="ratio-label">Repeat</span><span class="ratio-pct" id="ratio-repeat-pct">—</span></div>
+              <div class="ratio-item"><div class="ratio-dot" style="background:var(--green)"></div><span class="ratio-label">New</span><span class="ratio-pct" id="ratio-new-pct">—</span></div>
+            </div>
+            <div style="margin-top:12px;font-size:11px;color:var(--mu);font-family:var(--fm)" id="custInsight">Repeat customers drive higher LTV.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-divider"></div>
+
+  <!-- SECTION 6: EXPENSE BREAKDOWN -->
+  <div class="section">
+    <div class="sec-head">
+      <div>
+        <div class="sec-tag">📋 Expense Analysis</div>
+        <h2 class="sec-title">Expense Breakdown</h2>
+        <p class="sec-sub">Category-level operational cost distribution.</p>
+      </div>
+      <div class="sec-action"><button onclick="loadExpenseBreakdown()">⟳ Refresh</button></div>
+    </div>
+    <div class="grid-1-2">
+      <!-- Pie chart -->
+      <div class="card">
+        <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(245,158,11,.1)">🥧</div>Distribution</div></div>
+        <div class="card-body">
+          <div class="pie-wrap">
+            <div class="pie-canvas">
+              <canvas id="pieCanvas" width="140" height="140"></canvas>
+            </div>
+            <div class="pie-legend" id="pieLegend"><div style="color:var(--mu);font-size:12px;font-family:var(--fm)">Loading…</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Breakdown table -->
+      <div class="card">
+        <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(138,124,255,.1)">📊</div>Category Detail</div></div>
+        <div class="card-body" style="padding-top:12px">
+          <div class="data-table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Category</th><th>Amount (₹)</th><th>% of Total</th><th>vs Last Month</th></tr></thead>
+              <tbody id="expenseTbody"><tr class="loading-row"><td colspan="4"><span class="inline-spinner"></span>Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtINR = v => '₹' + Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+const fmtK = v => v >= 100000 ? '₹'+(v/100000).toFixed(1)+'L' : v >= 1000 ? '₹'+(v/1000).toFixed(1)+'K' : fmtINR(v);
+
+function toast(msg,type='suc',dur=3000){
+  const tc=$('toast-container'),icons={suc:'✅',err:'❌',inf:'📡'};
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;
+  t.innerHTML=`<span>${icons[type]||'ℹ'}</span><span>${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+  tc.appendChild(t);
+  setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),400);},dur);
+}
+
+function toggleTheme(){
+  const h=document.documentElement,k=$('knob');
+  h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';
+  k.textContent=h.dataset.theme==='dark'?'🌙':'☀️';
+}
+
+/* === KPIs === */
+function loadKPIs(){
+  fetch('/api/analytics-overview')
+    .then(r=>r.json())
+    .then(d=>{
+      setKPI('k-revenue',fmtK(d.monthly_revenue),`↑ +${d.revenue_growth||0}% vs last month`,'up');
+      setKPI('k-profit',fmtK(d.monthly_profit),`↑ ${d.profit_margin||0}% margin`,'up');
+      setKPI('k-aov',fmtINR(d.avg_order_value),`● ${d.total_orders||0} orders`,'neu');
+      setKPI('k-cgrowth',`+${d.customer_growth||0}%`,`↑ +${d.new_customers||0} this month`,'up');
+      setKPI('k-expratio',`${d.expense_ratio||0}%`,`${d.expense_ratio>40?'⚠ High':'✓ Healthy'}`,'warn');
+      setKPI('k-stockrisk',`${d.stock_risk_score||0}/10`,`${d.low_stock_products||0} products at risk`,'warn');
+    })
+    .catch(()=>{
+      setKPI('k-revenue','₹4.28L','↑ +14.2% vs last month','up');
+      setKPI('k-profit','₹68.4K','↑ 16% margin','up');
+      setKPI('k-aov','₹2,004','● 214 orders','neu');
+      setKPI('k-cgrowth','+8.4%','↑ +18 this month','up');
+      setKPI('k-expratio','22.4%','✓ Healthy','warn');
+      setKPI('k-stockrisk','3.2/10','3 products at risk','warn');
+    });
+}
+
+function setKPI(id,val,change,cls){
+  const el=$(id); if(!el) return;
+  el.innerHTML=val;
+  const ch=$(id+'-ch'); if(ch){ch.textContent=change;ch.className='kpi-ch '+cls;}
+}
+
+/* === SALES TREND === */
+function loadSalesTrend(){
+  fetch('/api/sales-trend')
+    .then(r=>r.json())
+    .then(d=>renderSalesTrend(d))
+    .catch(()=>renderSalesTrend({
+      labels:['Oct','Nov','Dec','Jan','Feb','Mar'],
+      values:[280000,342000,510000,389000,462000,520000],
+      target:500000
+    }));
+}
+
+function renderSalesTrend(d){
+  const wrap=$('trendBars'),labWrap=$('trendLabels');
+  if(!wrap) return;
+  wrap.innerHTML='';labWrap.innerHTML='';
+  const vals=d.values||[];const labels=d.labels||[];
+  const max=Math.max(...vals);
+  const colors=['var(--g1)','var(--g2)','var(--g-green)','var(--g1)','var(--g2)','var(--g-green)'];
+  vals.forEach((v,i)=>{
+    const pct=max>0?(v/max*100):0;
+    const col=document.createElement('div');
+    col.className='bar-col';
+    col.innerHTML=`<div class="bar-fill" style="height:0%;background:${colors[i%colors.length]};transition-delay:${i*.1}s" data-h="${pct}%" data-tip="${fmtK(v)}"></div>`;
+    wrap.appendChild(col);
+    const lbl=document.createElement('span');
+    lbl.style.cssText='font-size:9px;color:var(--mu);font-family:var(--fm);flex:1;text-align:center';
+    lbl.textContent=labels[i]||'';
+    labWrap.appendChild(lbl);
+  });
+  requestAnimationFrame(()=>wrap.querySelectorAll('.bar-fill').forEach(b=>b.style.height=b.dataset.h));
+
+  // stats
+  const maxIdx=vals.indexOf(max);
+  const minIdx=vals.indexOf(Math.min(...vals));
+  const mom=vals.length>=2?((vals[vals.length-1]-vals[vals.length-2])/vals[vals.length-2]*100).toFixed(1):0;
+  const total=vals.reduce((a,b)=>a+b,0);
+  $('gs-peak').textContent=labels[maxIdx]||'—';
+  $('gs-low').textContent=labels[minIdx]||'—';
+  $('gs-mom').textContent=`+${mom}%`;
+  $('gs-total').textContent=fmtK(total);
+
+  // target
+  const last=vals[vals.length-1]||0;
+  const tgt=d.target||500000;
+  const pct=Math.min(100,Math.round(last/tgt*100));
+  $('targetPct').textContent=pct+'%';
+  $('targetBar').style.width=pct+'%';
+}
+
+/* === PROFIT ANALYSIS === */
+function loadProfitAnalysis(){
+  fetch('/api/profit-analysis')
+    .then(r=>r.json())
+    .then(d=>renderProfitAnalysis(d))
+    .catch(()=>renderProfitAnalysis({revenue:428600,cogs:248000,expenses:82400,profit:98200,gross_margin:42.1,net_margin:22.9,roi:39.6}));
+}
+
+function renderProfitAnalysis(d){
+  const rev=d.revenue||0,cost=d.cogs||0,exp=d.expenses||0,profit=d.profit||0;
+  $('pnl-rev').textContent=fmtK(rev);
+  $('pnl-cost').textContent=fmtK(cost);
+  $('pnl-exp').textContent=fmtK(exp);
+  $('pnl-profit').textContent=fmtK(profit);
+  setTimeout(()=>{
+    $('rev-bar').style.width='100%';
+    $('cost-bar').style.width=(cost/rev*100)+'%';
+    $('exp-bar').style.width=(exp/rev*100)+'%';
+    $('profit-bar').style.width=(profit/rev*100)+'%';
+  },100);
+  $('mgn-gross').textContent=`${d.gross_margin||0}%`;
+  $('mgn-net').textContent=`${d.net_margin||0}%`;
+  $('mgn-roi').textContent=`${d.roi||0}%`;
+}
+
+/* === INVENTORY INSIGHTS === */
+function loadInventoryInsights(){
+  const tbody=$('inventoryTbody');
+  tbody.innerHTML='<tr class="loading-row"><td colspan="8"><span class="inline-spinner"></span>Analyzing inventory…</td></tr>';
+  fetch('/api/inventory-insights')
+    .then(r=>r.json())
+    .then(d=>renderInventory(d))
+    .catch(()=>renderInventory([
+      {id:1,name:'Basmati Rice 5kg',category:'Grocery',stock:8,velocity:4.2,days_left:2,status:'low_stock'},
+      {id:2,name:'Surf Excel 1kg',category:'Household',stock:45,velocity:3.1,days_left:14,status:'fast_moving'},
+      {id:3,name:'Old Spice Deo',category:'Personal Care',stock:120,velocity:0.3,days_left:400,status:'dead_stock'},
+      {id:4,name:'Tata Salt 1kg',category:'Grocery',stock:3,velocity:5.1,days_left:1,status:'out_of_stock'},
+      {id:5,name:'Amul Butter 500g',category:'Dairy',stock:22,velocity:2.8,days_left:8,status:'reorder'},
+      {id:6,name:'Bru Coffee 200g',category:'Beverages',stock:67,velocity:1.9,days_left:35,status:'fast_moving'},
+    ]));
+}
+
+function renderInventory(data){
+  const tbody=$('inventoryTbody');
+  if(!data||!data.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📦</div>No inventory data available.</div></td></tr>';return;}
+  const statusMap={fast_moving:{lbl:'🚀 Fast Moving',cls:'tb-fast'},dead_stock:{lbl:'💤 Dead Stock',cls:'tb-dead'},low_stock:{lbl:'⚠ Low Stock',cls:'tb-low'},reorder:{lbl:'🔄 Reorder',cls:'tb-reorder'},out_of_stock:{lbl:'❌ Out of Stock',cls:'tb-low'}};
+  tbody.innerHTML=data.map((row,i)=>{
+    const s=statusMap[row.status]||{lbl:row.status,cls:'tb-low'};
+    const daysColor=row.days_left<=3?'var(--red)':row.days_left<=7?'var(--amber)':'var(--green)';
+    return `<tr><td class="mono">${i+1}</td><td style="font-weight:600;color:var(--tx)">${row.name}</td><td style="color:var(--tx2)">${row.category||'—'}</td><td class="mono">${row.stock}</td><td class="mono">${row.velocity||'—'}/day</td><td style="color:${daysColor};font-family:var(--fm);font-weight:700">${row.days_left}d</td><td><span class="tbl-badge ${s.cls}">${s.lbl}</span></td><td><button style="font-size:10px;padding:4px 10px;border-radius:6px;background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.18);color:var(--cyan);cursor:pointer;font-family:var(--fm)" onclick="toast('Reorder initiated for ${row.name}','suc')">Reorder</button></td></tr>`;
+  }).join('');
+}
+
+/* === CUSTOMER INSIGHTS === */
+function loadCustomerInsights(){
+  fetch('/api/customer-insights')
+    .then(r=>r.json())
+    .then(d=>renderCustomerInsights(d))
+    .catch(()=>renderCustomerInsights({
+      top_customers:[
+        {rank:1,name:'Priya Sharma',revenue:42600,orders:28,type:'VIP'},
+        {rank:2,name:'Ravi Kumar',revenue:38200,orders:22,type:'Wholesale'},
+        {rank:3,name:'Neha Patel',revenue:29800,orders:19,type:'Retail'},
+        {rank:4,name:'Suresh Mehta',revenue:24600,orders:15,type:'Wholesale'},
+        {rank:5,name:'Kavya Singh',revenue:18900,orders:12,type:'Retail'},
+        {rank:6,name:'Aditya Rao',revenue:14200,orders:9,type:'Online'},
+      ],
+      growth_labels:['Oct','Nov','Dec','Jan','Feb','Mar'],
+      growth_values:[18,24,31,22,29,38],
+      repeat_pct:64,new_pct:36
+    }));
+}
+
+function renderCustomerInsights(d){
+  // Top customers
+  const custGrid=$('topCustomers');
+  if(custGrid && d.top_customers){
+    const colors=['var(--g1)','var(--g2)','var(--g-green)','var(--g1)','var(--g2)','var(--g-green)'];
+    custGrid.innerHTML=d.top_customers.map((c,i)=>`
+      <div class="cust-card">
+        <div class="cust-rank"><span class="rank-badge">#${c.rank||i+1}</span>${c.type||''}</div>
+        <div class="cust-name">${c.name}</div>
+        <div class="cust-val">${fmtK(c.revenue)}</div>
+        <div class="cust-meta">${c.orders} orders · ${fmtINR(c.revenue/c.orders)} avg</div>
+      </div>
+    `).join('');
+  }
+
+  // Growth trend
+  const growthBars=$('custGrowthBars'),growthLabels=$('custGrowthLabels');
+  if(growthBars && d.growth_values){
+    const max=Math.max(...d.growth_values);
+    growthBars.innerHTML=d.growth_values.map((v,i)=>`<div class="mini-bar" style="height:0%;transition-delay:${i*.08}s" data-h="${v/max*100}%"></div>`).join('');
+    growthLabels.innerHTML=(d.growth_labels||[]).map(l=>`<span>${l}</span>`).join('');
+    requestAnimationFrame(()=>growthBars.querySelectorAll('.mini-bar').forEach(b=>b.style.height=b.dataset.h));
+    $('custGrowthTotal').textContent = d.growth_values.reduce((a,b)=>a+b,0)+' new';
+  }
+
+  // Ratio
+  const rp=d.repeat_pct||64, np=d.new_pct||36;
+  const rRepeat=$('ratio-repeat'),rNew=$('ratio-new');
+  if(rRepeat && rNew){
+    setTimeout(()=>{rRepeat.style.width=rp+'%';rNew.style.width=np+'%';},100);
+    $('ratio-repeat-pct').textContent=rp+'%';
+    $('ratio-new-pct').textContent=np+'%';
+    $('custInsight').textContent=rp>50?`${rp}% repeat customers — strong loyalty`:`Focus on retention: only ${rp}% repeat.`;
+  }
+}
+
+/* === EXPENSE BREAKDOWN === */
+function loadExpenseBreakdown(){
+  const tbody=$('expenseTbody');
+  tbody.innerHTML='<tr class="loading-row"><td colspan="4"><span class="inline-spinner"></span>Loading…</td></tr>';
+  fetch('/api/expense-breakdown')
+    .then(r=>r.json())
+    .then(d=>renderExpenseBreakdown(d))
+    .catch(()=>renderExpenseBreakdown([
+      {category:'Rent',amount:18000,pct:47.1,change:0},
+      {category:'Salaries',amount:8500,pct:22.2,change:5},
+      {category:'Transport',amount:4200,pct:11.0,change:-8},
+      {category:'Utilities',amount:3200,pct:8.4,change:12},
+      {category:'Marketing',amount:2400,pct:6.3,change:20},
+      {category:'Other',amount:1900,pct:5.0,change:-3},
+    ]));
+}
+
+function renderExpenseBreakdown(data){
+  const pieColors=['#00d4ff','#5b8cff','#8a7cff','#22d87a','#f59e0b','#ef4444','#f472b6'];
+  const tbody=$('expenseTbody');
+  if(!data||!data.length){tbody.innerHTML='<tr><td colspan="4"><div class="empty-state">No expense data.</div></td></tr>';return;}
+  tbody.innerHTML=data.map((row,i)=>{
+    const chg=row.change||0;const chgColor=chg>0?'var(--red)':chg<0?'var(--green)':'var(--mu)';const chgSign=chg>0?'↑':chg<0?'↓':'→';
+    return `<tr><td><span style="display:flex;align-items:center;gap:7px"><span style="width:10px;height:10px;border-radius:3px;background:${pieColors[i%pieColors.length]};flex-shrink:0;display:inline-block"></span><span style="font-weight:600;color:var(--tx)">${row.category}</span></span></td><td class="mono">${fmtINR(row.amount)}</td><td><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:5px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;min-width:60px"><div style="height:100%;background:${pieColors[i%pieColors.length]};width:${row.pct}%;border-radius:3px"></div></div><span class="mono">${row.pct}%</span></div></td><td style="color:${chgColor};font-family:var(--fm);font-size:11.5px;font-weight:700">${chgSign} ${Math.abs(chg)}%</td></tr>`;
+  }).join('');
+
+  // Pie chart
+  const canvas=$('pieCanvas');const pieLegend=$('pieLegend');
+  if(canvas && canvas.getContext){
+    const ctx=canvas.getContext('2d');
+    const cx=70,cy=70,r=55,ir=30;
+    ctx.clearRect(0,0,140,140);
+    let start=-Math.PI/2;
+    data.forEach((row,i)=>{
+      const slice=row.pct/100*Math.PI*2;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,start,start+slice);ctx.closePath();
+      ctx.fillStyle=pieColors[i%pieColors.length];ctx.fill();
+      start+=slice;
+    });
+    ctx.beginPath();ctx.arc(cx,cy,ir,0,Math.PI*2);ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--card').trim()||'#0d1628';ctx.fill();
+    pieLegend.innerHTML=data.map((row,i)=>`<div class="pie-legend-item"><div class="pie-dot" style="background:${pieColors[i%pieColors.length]}"></div><span class="pie-lbl">${row.category}</span><span class="pie-pct">${row.pct}%</span></div>`).join('');
+  }
+}
+
+function refreshAll(){
+  toast('Refreshing all analytics…','inf',2000);
+  loadKPIs();loadSalesTrend();loadProfitAnalysis();loadInventoryInsights();loadCustomerInsights();loadExpenseBreakdown();
+}
+
+(function init(){
+  loadKPIs();loadSalesTrend();loadProfitAnalysis();loadInventoryInsights();loadCustomerInsights();loadExpenseBreakdown();
+})();
+</script>
+</body>
+</html>
