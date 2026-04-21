@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session, redirect
+import logging
+import math
 import sqlite3
 import random
 import smtplib
@@ -7,187 +9,232 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 # ================= COLUMN NORMALIZATION ENGINE =================
 COLUMN_ALIASES = {
 
     "customers": {
-        "name": ["name", "customer", "customer_name"],
-        "phone": ["phone", "mobile"],
-        "email": ["email"],
-        "city": ["city"],
-        "customer_type": ["type", "customer_type"]
+        "name": ["name", "customer", "customer_name", "full_name"],
+        "phone": ["phone", "mobile", "contact_no", "phone_number"],
+        "email": ["email", "email_address"],
+        "city": ["city", "location"],
+        "customer_type": ["type", "customer_type", "segment"]
     },
 
     "suppliers": {
-        "name": ["name", "supplier"],
-        "contact_person": ["contact", "contact_person"],
-        "phone": ["phone"],
+        "name": ["name", "supplier", "supplier_name", "company"],
+        "contact_person": ["contact", "contact_person", "contact_name"],
+        "phone": ["phone", "mobile", "contact_no"],
         "email": ["email"],
-        "city": ["city"],
-        "rating": ["rating"]
+        "city": ["city", "location"],
+        "rating": ["rating", "score"]
     },
 
     "products": {
-        "name": ["name", "product"],
-        "category_id": ["category", "category_id"],
-        "supplier_id": ["supplier", "supplier_id"],
-        "sku": ["sku"],
-        "unit": ["unit"],
-        "cost_price": ["cost", "cost_price"],
-        "selling_price": ["price", "selling_price"],
-        "current_stock": ["stock", "quantity"],
-        "reorder_level": ["reorder_level"]
+        "name": ["name", "product", "product_name", "item"],
+        "category_id": ["category", "category_id", "category_name"],
+        "supplier_id": ["supplier", "supplier_id", "supplier_name"],
+        "sku": ["sku", "barcode", "code", "item_code"],
+        "unit": ["unit", "uom", "unit_of_measure"],
+        "cost_price": ["cost", "cost_price", "purchase_price", "cp"],
+        "selling_price": ["price", "selling_price", "mrp", "sp", "sale_price"],
+        "current_stock": ["stock", "quantity", "current_stock", "qty", "opening_stock"],
+        "reorder_level": ["reorder_level", "reorder", "min_stock"]
     },
 
     "sales": {
-        "customer_id": ["customer_id", "customer"],
-        "sale_date": ["sale_date", "date"],
-        "total_amount": ["total", "total_amount"],
-        "payment_method": ["payment"],
-        "notes": ["notes"]
+        "customer_id": ["customer_id", "customer", "customer_name"],
+        "sale_date": ["sale_date", "date", "invoice_date"],
+        "total_amount": ["total", "total_amount", "amount", "invoice_amount"],
+        "payment_method": ["payment", "payment_method", "mode"],
+        "notes": ["notes", "remarks", "comment"]
     },
 
     "sale_items": {
-        "sale_id": ["sale_id"],
-        "product_id": ["product", "product_id"],
+        "sale_id": ["sale_id", "invoice_id"],
+        "product_id": ["product", "product_id", "product_name", "item"],
         "quantity": ["quantity", "qty"],
-        "price": ["price"],
-        "discount": ["discount"],
-        "subtotal": ["subtotal"]
+        "price": ["price", "unit_price", "rate"],
+        "discount": ["discount", "disc", "discount_pct"],
+        "subtotal": ["subtotal", "line_total", "amount"]
     },
 
     "purchases": {
-        "supplier_id": ["supplier", "supplier_id"],
-        "purchase_date": ["purchase_date", "date"],
-        "total_amount": ["total", "total_amount"],
+        "supplier_id": ["supplier", "supplier_id", "supplier_name"],
+        "purchase_date": ["purchase_date", "date", "po_date"],
+        "total_amount": ["total", "total_amount", "po_amount"],
         "status": ["status"]
     },
 
     "purchase_items": {
-        "purchase_id": ["purchase_id"],
-        "product_id": ["product", "product_id"],
+        "purchase_id": ["purchase_id", "po_id"],
+        "product_id": ["product", "product_id", "product_name", "item"],
         "quantity": ["quantity", "qty"],
-        "unit_cost": ["cost", "unit_cost"]
+        "unit_cost": ["cost", "unit_cost", "rate"]
     },
 
     "expenses": {
-        "category": ["category", "expense_category"],
-        "amount": ["amount", "total"],
+        "category": ["category", "expense_category", "type"],
+        "amount": ["amount", "total", "expense_amount"],
         "expense_date": ["date", "expense_date"],
-        "description": ["description", "remarks"]
+        "description": ["description", "remarks", "details"]
     },
 
     "categories": {
-        "name": ["name", "category"],
-        "description": ["description"]
+        "name": ["name", "category", "category_name"],
+        "description": ["description", "details"]
     },
 
     "stock_alerts": {
-        "product_id": ["product", "product_id"],
-        "alert_type": ["alert_type"],
-        "threshold": ["threshold"],
-        "is_active": ["is_active"]
+        "product_id": ["product", "product_id", "product_name"],
+        "alert_type": ["alert_type", "type"],
+        "threshold": ["threshold", "min_qty"],
+        "is_active": ["is_active", "active", "status"]
     }
 }
+
+FK_MAP = {
+    "products": [
+        ("category_id", "categories", "name"),
+        ("supplier_id", "suppliers", "name")
+    ],
+    "sales": [
+        ("customer_id", "customers", "name")
+    ],
+    "purchases": [
+        ("supplier_id", "suppliers", "name")
+    ],
+    "sale_items": [
+        ("product_id", "products", "name")
+    ],
+    "purchase_items": [
+        ("product_id", "products", "name")
+    ],
+    "stock_alerts": [
+        ("product_id", "products", "name")
+    ]
+}
+
+
+def _safe_val(val):
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return None
+    if isinstance(val, str):
+        stripped = val.strip()
+        return stripped if stripped else None
+    return val
+
+
+def _is_resolvable(val):
+    if val is None:
+        return False
+    try:
+        if pd.isna(val):
+            return False
+    except (TypeError, ValueError):
+        pass
+    s = str(val).strip()
+    if not s:
+        return False
+    if s.isdigit():
+        return False
+    return True
+
+
+def _lookup_fk(cursor, ref_table, ref_col, raw_val):
+    clean = str(raw_val).strip()
+    try:
+        row = cursor.execute(
+            f"SELECT id FROM {ref_table} WHERE LOWER(TRIM({ref_col})) = LOWER(TRIM(?))",
+            (clean,)
+        ).fetchone()
+        if row:
+            return int(row["id"])
+        logger.warning(
+            "FK unresolved: no row in %s where %s = %r; column will be NULL.",
+            ref_table, ref_col, clean
+        )
+        return None
+    except Exception as exc:
+        logger.error(
+            "FK lookup error [%s.%s = %r]: %s",
+            ref_table, ref_col, clean, exc
+        )
+        return None
+
+
+def g(row, key):
+    return _safe_val(row.get(key))
+
 
 def normalize_columns(df, dataset):
 
     if dataset not in COLUMN_ALIASES:
         return df
 
+    df.columns = [str(c).strip() for c in df.columns]
+
     mapping = {}
-
-    for standard, aliases in COLUMN_ALIASES[dataset].items():
-
+    for standard_col, aliases in COLUMN_ALIASES[dataset].items():
+        normalized_aliases = {alias.lower().strip() for alias in aliases}
         for col in df.columns:
+            if col.lower() in normalized_aliases:
+                mapping[col] = standard_col
+                break
 
-            if col.lower().strip() in aliases:
-                mapping[col] = standard
+    renamed = df.rename(columns=mapping)
 
-    return df.rename(columns=mapping)
+    expected = set(COLUMN_ALIASES[dataset].keys())
+    found = set(mapping.values())
+    also_found = expected & set(renamed.columns)
+    missing = expected - found - also_found
+    if missing:
+        logger.warning(
+            "normalize_columns(%s): expected columns not found in Excel -> %s",
+            dataset, missing
+        )
+
+    logger.info(
+        "normalize_columns(%s): mapped %d column(s) -> %s",
+        dataset, len(mapping), mapping
+    )
+    return renamed
 
 def resolve_foreign_keys(row, dataset, conn):
+    if hasattr(row, "to_dict"):
+        row = {k: _safe_val(v) for k, v in row.to_dict().items()}
+    else:
+        row = {k: _safe_val(v) for k, v in dict(row).items()}
+
+    if dataset not in FK_MAP:
+        return row
 
     cursor = conn.cursor()
 
-    try:
+    for fk_col, ref_table, ref_col in FK_MAP[dataset]:
+        raw_val = row.get(fk_col)
 
-        if dataset == "products":
+        if not _is_resolvable(raw_val):
+            continue
 
-            if row.get("category_id") and not str(row["category_id"]).isdigit():
+        resolved_id = _lookup_fk(cursor, ref_table, ref_col, raw_val)
+        row[fk_col] = resolved_id
 
-                r = cursor.execute(
-                    "SELECT id FROM categories WHERE name=?",
-                    (row["category_id"],)
-                ).fetchone()
-
-                if r:
-                    row["category_id"] = r["id"]
-
-            if row.get("supplier_id") and not str(row["supplier_id"]).isdigit():
-
-                r = cursor.execute(
-                    "SELECT id FROM suppliers WHERE name=?",
-                    (row["supplier_id"],)
-                ).fetchone()
-
-                if r:
-                    row["supplier_id"] = r["id"]
-
-
-        if dataset == "sales":
-
-            if row.get("customer_id") and not str(row["customer_id"]).isdigit():
-
-                r = cursor.execute(
-                    "SELECT id FROM customers WHERE name=?",
-                    (row["customer_id"],)
-                ).fetchone()
-
-                if r:
-                    row["customer_id"] = r["id"]
-
-
-        if dataset == "purchases":
-
-            if row.get("supplier_id") and not str(row["supplier_id"]).isdigit():
-
-                r = cursor.execute(
-                    "SELECT id FROM suppliers WHERE name=?",
-                    (row["supplier_id"],)
-                ).fetchone()
-
-                if r:
-                    row["supplier_id"] = r["id"]
-
-
-        if dataset == "sale_items":
-
-            if row.get("product_id") and not str(row["product_id"]).isdigit():
-
-                r = cursor.execute(
-                    "SELECT id FROM products WHERE name=?",
-                    (row["product_id"],)
-                ).fetchone()
-
-                if r:
-                    row["product_id"] = r["id"]
-
-
-        if dataset == "purchase_items":
-
-            if row.get("product_id") and not str(row["product_id"]).isdigit():
-
-                r = cursor.execute(
-                    "SELECT id FROM products WHERE name=?",
-                    (row["product_id"],)
-                ).fetchone()
-
-                if r:
-                    row["product_id"] = r["id"]
-
-    except:
-        pass
+        if resolved_id is not None:
+            logger.debug(
+                "Resolved %s.%s: %r -> %d",
+                dataset, fk_col, raw_val, resolved_id
+            )
 
     return row
 
@@ -688,19 +735,52 @@ def add_business_profiles():
 
         conn = get_db()
 
-        conn.execute("""
-            INSERT INTO business_profiles
-            (business_name, business_type, gst_number, city, address)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
+        user = conn.execute("""
+            SELECT id FROM users
+            WHERE email=?
+        """, (session.get("user_email"),)).fetchone()
 
-            data.get("business_name"),
-            data.get("business_type"),
-            data.get("gst_number"),
-            data.get("city"),
-            data.get("address")
+        if not user:
+            return jsonify({
+                "error": "Logged-in user not found"
+            }), 404
 
-        ))
+        existing_profile = conn.execute("""
+            SELECT id FROM business_profiles
+            WHERE user_id=?
+        """, (user["id"],)).fetchone()
+
+        if existing_profile:
+            conn.execute("""
+                UPDATE business_profiles
+                SET business_name=?, business_type=?, gst_number=?, city=?, address=?
+                WHERE user_id=?
+            """, (
+
+                data.get("business_name"),
+                data.get("business_type"),
+                data.get("gst_number"),
+                data.get("city"),
+                data.get("address"),
+                user["id"]
+
+            ))
+        else:
+
+            conn.execute("""
+                INSERT INTO business_profiles
+                (user_id, business_name, business_type, gst_number, city, address)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+
+                user["id"],
+                data.get("business_name"),
+                data.get("business_type"),
+                data.get("gst_number"),
+                data.get("city"),
+                data.get("address")
+
+            ))
 
         conn.commit()
 
@@ -890,75 +970,72 @@ def add_purchase():
             "error": "Failed to record purchase"
         }), 500    
 
-# ================= DASHBOARD SUMMARY =================
+###################################
+# ANALYTICS ROUTES
+###################################
 
 @app.route("/api/dashboard-summary")
 def dashboard_summary():
 
     conn = get_db()
 
-    total_sales = conn.execute("SELECT SUM(total_amount) FROM sales").fetchone()[0] or 0
-
-    total_expenses = conn.execute("SELECT SUM(amount) FROM expenses").fetchone()[0] or 0
-
-    total_customers = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
-
-    total_products = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-
-    total_suppliers = conn.execute("SELECT COUNT(*) FROM suppliers").fetchone()[0]
-
-    total_purchases = conn.execute("SELECT SUM(total_amount) FROM purchases").fetchone()[0] or 0
-
-    low_stock = conn.execute("""
-        SELECT COUNT(*)
-        FROM products
-        WHERE current_stock < reorder_level
+    total_sales = conn.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM sales
     """).fetchone()[0]
 
-    return jsonify(dict(
-        total_sales=total_sales,
-        total_expenses=total_expenses,
-        total_customers=total_customers,
-        total_products=total_products,
-        total_suppliers=total_suppliers,
-        total_purchases=total_purchases,
-        low_stock_count=low_stock
-    ))
+    total_purchases = conn.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM purchases
+    """).fetchone()[0]
 
-
-# ================= ANALYTICS OVERVIEW =================
-
-@app.route("/api/analytics-overview")
-def analytics_overview():
-
-    conn = get_db()
-
-    revenue = conn.execute("""
-        SELECT SUM(total_amount)
-        FROM sales
-    """).fetchone()[0] or 0
-
-    expenses = conn.execute("""
-        SELECT SUM(amount)
+    total_expenses = conn.execute("""
+        SELECT COALESCE(SUM(amount), 0)
         FROM expenses
-    """).fetchone()[0] or 0
+    """).fetchone()[0]
 
-    profit = revenue - expenses
-
-    customers = conn.execute("""
+    total_customers = conn.execute("""
         SELECT COUNT(*)
         FROM customers
     """).fetchone()[0]
 
-    return jsonify(dict(
-        revenue=revenue,
-        profit=profit,
-        customers=customers,
-        expense_ratio=(expenses / revenue * 100) if revenue else 0
-    ))
+    total_products = conn.execute("""
+        SELECT COUNT(*)
+        FROM products
+    """).fetchone()[0]
 
+    total_suppliers = conn.execute("""
+        SELECT COUNT(*)
+        FROM suppliers
+    """).fetchone()[0]
 
-# ================= SALES TREND =================
+    total_orders = conn.execute("""
+        SELECT COUNT(*)
+        FROM sales
+    """).fetchone()[0]
+
+    low_stock = conn.execute("""
+        SELECT COUNT(*)
+        FROM products
+        WHERE current_stock <= COALESCE(reorder_level, 0)
+    """).fetchone()[0]
+
+    expense_ratio = (total_expenses / total_sales * 100) if total_sales else 0
+    avg_order_value = (total_sales / total_orders) if total_orders else 0
+
+    return jsonify({
+        "total_sales": total_sales,
+        "total_purchases": total_purchases,
+        "total_expenses": total_expenses,
+        "total_customers": total_customers,
+        "total_products": total_products,
+        "total_suppliers": total_suppliers,
+        "total_orders": total_orders,
+        "avg_order_value": avg_order_value,
+        "expense_ratio": round(expense_ratio, 2),
+        "low_stock_count": low_stock
+    })
+
 
 @app.route("/api/sales-trend")
 def sales_trend():
@@ -966,58 +1043,71 @@ def sales_trend():
     conn = get_db()
 
     rows = conn.execute("""
-        SELECT strftime('%m', sale_date) month,
-        SUM(total_amount) total
+        SELECT
+            strftime('%Y-%m', sale_date) AS sale_month,
+            ROUND(COALESCE(SUM(total_amount), 0), 2) AS total
         FROM sales
-        GROUP BY month
+        WHERE sale_date IS NOT NULL
+        GROUP BY sale_month
+        ORDER BY sale_month
     """).fetchall()
 
-    return jsonify([
-        dict(month=r["month"], total=r["total"])
-        for r in rows
-    ])
+    labels = []
+    values = []
 
+    for row in rows:
+        month_value = row["sale_month"]
+        if not month_value:
+            continue
+        year, month = month_value.split("-")
+        labels.append(datetime.strptime(f"{year}-{month}-01", "%Y-%m-%d").strftime("%b"))
+        values.append(float(row["total"] or 0))
 
-# ================= PROFIT ANALYSIS =================
+    target = max(values) if values else 0
+
+    return jsonify({
+        "labels": labels,
+        "values": values,
+        "target": target
+    })
+
 
 @app.route("/api/profit-analysis")
 def profit_analysis():
 
     conn = get_db()
 
-    revenue = conn.execute("SELECT SUM(total_amount) FROM sales").fetchone()[0] or 0
+    revenue = conn.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM sales
+    """).fetchone()[0]
 
-    purchases = conn.execute("SELECT SUM(total_amount) FROM purchases").fetchone()[0] or 0
+    cost = conn.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM purchases
+    """).fetchone()[0]
 
-    expenses = conn.execute("SELECT SUM(amount) FROM expenses").fetchone()[0] or 0
+    expenses = conn.execute("""
+        SELECT COALESCE(SUM(amount), 0)
+        FROM expenses
+    """).fetchone()[0]
 
-    profit = revenue - purchases - expenses
+    profit = revenue - cost - expenses
+    gross_margin = ((revenue - cost) / revenue * 100) if revenue else 0
+    net_margin = (profit / revenue * 100) if revenue else 0
+    roi = (profit / cost * 100) if cost else 0
 
-    return jsonify(dict(
-        revenue=revenue,
-        cost=purchases,
-        expenses=expenses,
-        profit=profit
-    ))
+    return jsonify({
+        "revenue": revenue,
+        "cost": cost,
+        "expenses": expenses,
+        "profit": profit,
+        "cogs": cost,
+        "gross_margin": round(gross_margin, 2),
+        "net_margin": round(net_margin, 2),
+        "roi": round(roi, 2)
+    })
 
-
-# ================= INVENTORY INSIGHTS =================
-
-@app.route("/api/inventory-insights")
-def inventory_insights():
-
-    conn = get_db()
-
-    rows = conn.execute("""
-        SELECT name,current_stock
-        FROM products
-        WHERE current_stock < reorder_level
-    """).fetchall()
-
-    return jsonify([dict(r) for r in rows])
-
-
-# ================= CUSTOMER INSIGHTS =================
 
 @app.route("/api/customer-insights")
 def customer_insights():
@@ -1025,34 +1115,145 @@ def customer_insights():
     conn = get_db()
 
     rows = conn.execute("""
-        SELECT customers.name,
-        SUM(sales.total_amount) total
+        SELECT
+            customers.name,
+            ROUND(COALESCE(SUM(sales.total_amount), 0), 2) AS total
         FROM sales
         JOIN customers
-        ON customers.id=sales.customer_id
-        GROUP BY customers.id
+        ON customers.id = sales.customer_id
+        GROUP BY customers.id, customers.name
         ORDER BY total DESC
         LIMIT 5
     """).fetchall()
 
-    return jsonify([dict(r) for r in rows])
+    return jsonify([dict(row) for row in rows])
 
 
-# ================= EXPENSE BREAKDOWN =================
+@app.route("/api/inventory-insights")
+def inventory_insights():
+
+    conn = get_db()
+
+    rows = conn.execute("""
+        SELECT
+            products.id,
+            products.name,
+            categories.name AS category,
+            COALESCE(products.current_stock, 0) AS current_stock,
+            COALESCE(products.reorder_level, 0) AS reorder_level,
+            COALESCE(products.cost_price, 0) AS cost_price
+        FROM products
+        LEFT JOIN categories
+        ON categories.id = products.category_id
+        ORDER BY products.name
+    """).fetchall()
+
+    return jsonify([dict(row) for row in rows])
+
 
 @app.route("/api/expense-breakdown")
 def expense_breakdown():
 
     conn = get_db()
 
+    total_expenses = conn.execute("""
+        SELECT COALESCE(SUM(amount), 0)
+        FROM expenses
+    """).fetchone()[0]
+
+    current_month = conn.execute("""
+        SELECT strftime('%Y-%m', MAX(expense_date))
+        FROM expenses
+        WHERE expense_date IS NOT NULL
+    """).fetchone()[0]
+
+    previous_month = None
+    if current_month:
+        previous_month = conn.execute("""
+            SELECT strftime('%Y-%m', date(?, 'start of month', '-1 month'))
+        """, (f"{current_month}-01",)).fetchone()[0]
+
     rows = conn.execute("""
-        SELECT category,
-        SUM(amount) total
+        SELECT
+            category,
+            ROUND(COALESCE(SUM(amount), 0), 2) AS amount
         FROM expenses
         GROUP BY category
+        ORDER BY amount DESC
     """).fetchall()
 
-    return jsonify([dict(r) for r in rows])
+    result = []
+    for row in rows:
+        category = row["category"] or "Uncategorized"
+        amount = float(row["amount"] or 0)
+
+        current_amount = 0
+        previous_amount = 0
+
+        if current_month:
+            current_amount = conn.execute("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM expenses
+                WHERE category = ? AND strftime('%Y-%m', expense_date) = ?
+            """, (row["category"], current_month)).fetchone()[0] or 0
+
+        if previous_month:
+            previous_amount = conn.execute("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM expenses
+                WHERE category = ? AND strftime('%Y-%m', expense_date) = ?
+            """, (row["category"], previous_month)).fetchone()[0] or 0
+
+        if previous_amount:
+            change = ((current_amount - previous_amount) / previous_amount) * 100
+        elif current_amount:
+            change = 100
+        else:
+            change = 0
+
+        result.append({
+            "category": category,
+            "amount": amount,
+            "pct": round((amount / total_expenses * 100), 2) if total_expenses else 0,
+            "change": round(change, 2)
+        })
+
+    return jsonify(result)
+
+
+@app.route("/api/top-products")
+def top_products():
+
+    conn = get_db()
+
+    rows = conn.execute("""
+        SELECT
+            products.name,
+            ROUND(SUM(sale_items.quantity * sale_items.price), 2) AS revenue
+        FROM sale_items
+        JOIN products
+        ON products.id = sale_items.product_id
+        GROUP BY products.id, products.name
+        ORDER BY revenue DESC
+        LIMIT 5
+    """).fetchall()
+
+    return jsonify([dict(row) for row in rows])
+
+
+@app.route("/api/inventory-value")
+def inventory_value():
+
+    conn = get_db()
+
+    value = conn.execute("""
+        SELECT ROUND(COALESCE(SUM(COALESCE(current_stock, 0) * COALESCE(cost_price, 0)), 0), 2)
+        FROM products
+    """).fetchone()[0] or 0
+
+    return jsonify({
+        "inventory_value": value
+    })
 
 
 # ================= FILE PREVIEW =================
@@ -1173,9 +1374,10 @@ def import_sheet():
         errors = 0
 
 
-        for _, row in df.iterrows():
+        for index, raw_row in df.iterrows():
             
-            row = resolve_foreign_keys(row, dataset, conn)
+            row = resolve_foreign_keys(raw_row, dataset, conn)
+            logger.debug("Import row dataset=%s index=%s row=%s", dataset, index, row)
             
             try:
 
@@ -1187,11 +1389,11 @@ def import_sheet():
                         VALUES (?, ?, ?, ?, ?)
                     """, (
 
-                        row.get("name"),
-                        row.get("phone"),
-                        row.get("email"),
-                        row.get("city"),
-                        row.get("customer_type")
+                        g(row, "name"),
+                        g(row, "phone"),
+                        g(row, "email"),
+                        g(row, "city"),
+                        g(row, "customer_type")
 
                     ))
 
@@ -1204,12 +1406,12 @@ def import_sheet():
                         VALUES (?, ?, ?, ?, ?, ?)
                     """, (
 
-                        row.get("name"),
-                        row.get("contact_person"),
-                        row.get("phone"),
-                        row.get("email"),
-                        row.get("city"),
-                        row.get("rating")
+                        g(row, "name"),
+                        g(row, "contact_person"),
+                        g(row, "phone"),
+                        g(row, "email"),
+                        g(row, "city"),
+                        g(row, "rating")
 
                     ))
 
@@ -1222,13 +1424,17 @@ def import_sheet():
                         VALUES (?, ?)
                     """, (
 
-                        row.get("name"),
-                        row.get("description")
+                        g(row, "name"),
+                        g(row, "description")
 
                     ))
 
 
                 elif dataset == "products":
+                    if row.get("category_id") is None and "category_id" in row:
+                        logger.warning("Unresolved product category at row %s: %s", index, row)
+                    if row.get("supplier_id") is None and "supplier_id" in row:
+                        logger.warning("Unresolved product supplier at row %s: %s", index, row)
 
                     cursor.execute("""
                         INSERT INTO products
@@ -1246,20 +1452,22 @@ def import_sheet():
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
 
-                        row.get("name"),
-                        row.get("category_id"),
-                        row.get("supplier_id"),
-                        row.get("sku"),
-                        row.get("unit"),
-                        row.get("cost_price"),
-                        row.get("selling_price"),
-                        row.get("current_stock"),
-                        row.get("reorder_level")
+                        g(row, "name"),
+                        g(row, "category_id"),
+                        g(row, "supplier_id"),
+                        g(row, "sku"),
+                        g(row, "unit"),
+                        g(row, "cost_price"),
+                        g(row, "selling_price"),
+                        g(row, "current_stock"),
+                        g(row, "reorder_level")
 
                     ))
 
 
                 elif dataset == "purchases":
+                    if row.get("supplier_id") is None and "supplier_id" in row:
+                        logger.warning("Unresolved purchase supplier at row %s: %s", index, row)
 
                     cursor.execute("""
                         INSERT INTO purchases
@@ -1267,15 +1475,17 @@ def import_sheet():
                         VALUES (?, ?, ?, ?)
                     """, (
 
-                        row.get("supplier_id"),
-                        row.get("purchase_date"),
-                        row.get("total_amount"),
-                        row.get("status")
+                        g(row, "supplier_id"),
+                        g(row, "purchase_date"),
+                        g(row, "total_amount"),
+                        g(row, "status")
 
                     ))
 
 
                 elif dataset == "purchase_items":
+                    if row.get("product_id") is None and "product_id" in row:
+                        logger.warning("Unresolved purchase item product at row %s: %s", index, row)
 
                     cursor.execute("""
                         INSERT INTO purchase_items
@@ -1283,15 +1493,17 @@ def import_sheet():
                         VALUES (?, ?, ?, ?)
                     """, (
 
-                        row.get("purchase_id"),
-                        row.get("product_id"),
-                        row.get("quantity"),
-                        row.get("unit_cost")
+                        g(row, "purchase_id"),
+                        g(row, "product_id"),
+                        g(row, "quantity"),
+                        g(row, "unit_cost")
 
                     ))
 
 
                 elif dataset == "sales":
+                    if row.get("customer_id") is None and "customer_id" in row:
+                        logger.warning("Unresolved sale customer at row %s: %s", index, row)
 
                     cursor.execute("""
                         INSERT INTO sales
@@ -1299,16 +1511,18 @@ def import_sheet():
                         VALUES (?, ?, ?, ?, ?)
                     """, (
 
-                        row.get("customer_id"),
-                        row.get("sale_date"),
-                        row.get("total_amount"),
-                        row.get("payment_method"),
-                        row.get("notes")
+                        g(row, "customer_id"),
+                        g(row, "sale_date"),
+                        g(row, "total_amount"),
+                        g(row, "payment_method"),
+                        g(row, "notes")
 
                     ))
 
 
                 elif dataset == "sale_items":
+                    if row.get("product_id") is None and "product_id" in row:
+                        logger.warning("Unresolved sale item product at row %s: %s", index, row)
 
                     cursor.execute("""
                         INSERT INTO sale_items
@@ -1316,12 +1530,12 @@ def import_sheet():
                         VALUES (?, ?, ?, ?, ?, ?)
                     """, (
 
-                        row.get("sale_id"),
-                        row.get("product_id"),
-                        row.get("quantity"),
-                        row.get("price"),
-                        row.get("discount"),
-                        row.get("subtotal")
+                        g(row, "sale_id"),
+                        g(row, "product_id"),
+                        g(row, "quantity"),
+                        g(row, "price"),
+                        g(row, "discount"),
+                        g(row, "subtotal")
 
                     ))
 
@@ -1334,10 +1548,10 @@ def import_sheet():
                         VALUES (?, ?, ?, ?)
                     """, (
 
-                        row.get("category"),
-                        row.get("amount"),
-                        row.get("expense_date"),
-                        row.get("description")
+                        g(row, "category"),
+                        g(row, "amount"),
+                        g(row, "expense_date"),
+                        g(row, "description")
 
                     ))
 
@@ -1350,10 +1564,10 @@ def import_sheet():
                         VALUES (?, ?, ?, ?)
                     """, (
 
-                        row.get("product_id"),
-                        row.get("alert_type"),
-                        row.get("threshold"),
-                        row.get("is_active")
+                        g(row, "product_id"),
+                        g(row, "alert_type"),
+                        g(row, "threshold"),
+                        g(row, "is_active")
 
                     ))
 
@@ -1363,9 +1577,7 @@ def import_sheet():
 
             except Exception as e:
 
-                print("Row skipped:", e)
-
-                print("Row skipped:", e)
+                logger.exception("Row skipped for dataset=%s index=%s", dataset, index)
                 errors += 1
 
 
