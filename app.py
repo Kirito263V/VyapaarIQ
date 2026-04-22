@@ -1,248 +1,41 @@
-from flask import Flask, render_template, request, jsonify, session, redirect
+from flask import Flask, render_template, request, jsonify, session, redirect, send_file
+import csv
+import io
 import logging
-import math
 import sqlite3
 import random
 import smtplib
-import pandas as pd
+import zipfile
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from routes.import_routes import import_bp
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# ================= COLUMN NORMALIZATION ENGINE =================
-COLUMN_ALIASES = {
-
-    "customers": {
-        "name": ["name", "customer", "customer_name", "full_name"],
-        "phone": ["phone", "mobile", "contact_no", "phone_number"],
-        "email": ["email", "email_address"],
-        "city": ["city", "location"],
-        "customer_type": ["type", "customer_type", "segment"]
-    },
-
-    "suppliers": {
-        "name": ["name", "supplier", "supplier_name", "company"],
-        "contact_person": ["contact", "contact_person", "contact_name"],
-        "phone": ["phone", "mobile", "contact_no"],
-        "email": ["email"],
-        "city": ["city", "location"],
-        "rating": ["rating", "score"]
-    },
-
-    "products": {
-        "name": ["name", "product", "product_name", "item"],
-        "category_id": ["category", "category_id", "category_name"],
-        "supplier_id": ["supplier", "supplier_id", "supplier_name"],
-        "sku": ["sku", "barcode", "code", "item_code"],
-        "unit": ["unit", "uom", "unit_of_measure"],
-        "cost_price": ["cost", "cost_price", "purchase_price", "cp"],
-        "selling_price": ["price", "selling_price", "mrp", "sp", "sale_price"],
-        "current_stock": ["stock", "quantity", "current_stock", "qty", "opening_stock"],
-        "reorder_level": ["reorder_level", "reorder", "min_stock"]
-    },
-
-    "sales": {
-        "customer_id": ["customer_id", "customer", "customer_name"],
-        "sale_date": ["sale_date", "date", "invoice_date"],
-        "total_amount": ["total", "total_amount", "amount", "invoice_amount"],
-        "payment_method": ["payment", "payment_method", "mode"],
-        "notes": ["notes", "remarks", "comment"]
-    },
-
-    "sale_items": {
-        "sale_id": ["sale_id", "invoice_id"],
-        "product_id": ["product", "product_id", "product_name", "item"],
-        "quantity": ["quantity", "qty"],
-        "price": ["price", "unit_price", "rate"],
-        "discount": ["discount", "disc", "discount_pct"],
-        "subtotal": ["subtotal", "line_total", "amount"]
-    },
-
-    "purchases": {
-        "supplier_id": ["supplier", "supplier_id", "supplier_name"],
-        "purchase_date": ["purchase_date", "date", "po_date"],
-        "total_amount": ["total", "total_amount", "po_amount"],
-        "status": ["status"]
-    },
-
-    "purchase_items": {
-        "purchase_id": ["purchase_id", "po_id"],
-        "product_id": ["product", "product_id", "product_name", "item"],
-        "quantity": ["quantity", "qty"],
-        "unit_cost": ["cost", "unit_cost", "rate"]
-    },
-
-    "expenses": {
-        "category": ["category", "expense_category", "type"],
-        "amount": ["amount", "total", "expense_amount"],
-        "expense_date": ["date", "expense_date"],
-        "description": ["description", "remarks", "details"]
-    },
-
-    "categories": {
-        "name": ["name", "category", "category_name"],
-        "description": ["description", "details"]
-    },
-
-    "stock_alerts": {
-        "product_id": ["product", "product_id", "product_name"],
-        "alert_type": ["alert_type", "type"],
-        "threshold": ["threshold", "min_qty"],
-        "is_active": ["is_active", "active", "status"]
-    }
-}
-
-FK_MAP = {
-    "products": [
-        ("category_id", "categories", "name"),
-        ("supplier_id", "suppliers", "name")
-    ],
-    "sales": [
-        ("customer_id", "customers", "name")
-    ],
-    "purchases": [
-        ("supplier_id", "suppliers", "name")
-    ],
-    "sale_items": [
-        ("product_id", "products", "name")
-    ],
-    "purchase_items": [
-        ("product_id", "products", "name")
-    ],
-    "stock_alerts": [
-        ("product_id", "products", "name")
-    ]
-}
-
-
-def _safe_val(val):
-    if val is None:
-        return None
-    try:
-        if pd.isna(val):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-        return None
-    if isinstance(val, str):
-        stripped = val.strip()
-        return stripped if stripped else None
-    return val
-
-
-def _is_resolvable(val):
-    if val is None:
-        return False
-    try:
-        if pd.isna(val):
-            return False
-    except (TypeError, ValueError):
-        pass
-    s = str(val).strip()
-    if not s:
-        return False
-    if s.isdigit():
-        return False
-    return True
-
-
-def _lookup_fk(cursor, ref_table, ref_col, raw_val):
-    clean = str(raw_val).strip()
-    try:
-        row = cursor.execute(
-            f"SELECT id FROM {ref_table} WHERE LOWER(TRIM({ref_col})) = LOWER(TRIM(?))",
-            (clean,)
-        ).fetchone()
-        if row:
-            return int(row["id"])
-        logger.warning(
-            "FK unresolved: no row in %s where %s = %r; column will be NULL.",
-            ref_table, ref_col, clean
-        )
-        return None
-    except Exception as exc:
-        logger.error(
-            "FK lookup error [%s.%s = %r]: %s",
-            ref_table, ref_col, clean, exc
-        )
-        return None
-
-
-def g(row, key):
-    return _safe_val(row.get(key))
-
-
-def normalize_columns(df, dataset):
-
-    if dataset not in COLUMN_ALIASES:
-        return df
-
-    df.columns = [str(c).strip() for c in df.columns]
-
-    mapping = {}
-    for standard_col, aliases in COLUMN_ALIASES[dataset].items():
-        normalized_aliases = {alias.lower().strip() for alias in aliases}
-        for col in df.columns:
-            if col.lower() in normalized_aliases:
-                mapping[col] = standard_col
-                break
-
-    renamed = df.rename(columns=mapping)
-
-    expected = set(COLUMN_ALIASES[dataset].keys())
-    found = set(mapping.values())
-    also_found = expected & set(renamed.columns)
-    missing = expected - found - also_found
-    if missing:
-        logger.warning(
-            "normalize_columns(%s): expected columns not found in Excel -> %s",
-            dataset, missing
-        )
-
-    logger.info(
-        "normalize_columns(%s): mapped %d column(s) -> %s",
-        dataset, len(mapping), mapping
-    )
-    return renamed
-
-def resolve_foreign_keys(row, dataset, conn):
-    if hasattr(row, "to_dict"):
-        row = {k: _safe_val(v) for k, v in row.to_dict().items()}
-    else:
-        row = {k: _safe_val(v) for k, v in dict(row).items()}
-
-    if dataset not in FK_MAP:
-        return row
-
-    cursor = conn.cursor()
-
-    for fk_col, ref_table, ref_col in FK_MAP[dataset]:
-        raw_val = row.get(fk_col)
-
-        if not _is_resolvable(raw_val):
-            continue
-
-        resolved_id = _lookup_fk(cursor, ref_table, ref_col, raw_val)
-        row[fk_col] = resolved_id
-
-        if resolved_id is not None:
-            logger.debug(
-                "Resolved %s.%s: %r -> %d",
-                dataset, fk_col, raw_val, resolved_id
-            )
-
-    return row
-
-
 app = Flask(__name__)
 app.secret_key = "vyapaariq_secret_key"
 
 DB = "vyapaariq.db"
+app.config["DATABASE"] = DB
+app.register_blueprint(import_bp)
+
+USER_SCOPED_TABLES = [
+    "customers",
+    "products",
+    "sales",
+    "expenses",
+    "suppliers",
+    "categories",
+    "purchases",
+    "purchase_items",
+    "sale_items",
+    "stock_alerts",
+]
 
 # ================= DATABASE CONNECTION =================
 
@@ -252,6 +45,66 @@ def get_db():
     return conn
 
 
+def _auth_required_response():
+    return jsonify({"error": "authentication required"}), 401
+
+
+def _current_user_id():
+    return session.get("user_id")
+
+
+def _record_belongs_to_user(conn, table, record_id, user_id):
+    if record_id in (None, "", []):
+        return True
+    row = conn.execute(
+        f"SELECT id FROM {table} WHERE id = ? AND user_id = ?",
+        (record_id, user_id),
+    ).fetchone()
+    return row is not None
+
+
+def _get_user_by_id(conn, user_id):
+    return conn.execute(
+        "SELECT id, name, email, password FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+
+
+def _password_matches(stored_password, provided_password):
+    if not stored_password:
+        return False
+    if stored_password == provided_password:
+        return True
+    try:
+        return check_password_hash(stored_password, provided_password)
+    except ValueError:
+        return False
+
+
+def _ensure_user_scoped_schema():
+    conn = get_db()
+    try:
+        for table in USER_SCOPED_TABLES:
+            columns = {
+                row["name"]: row
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if "user_id" not in columns:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0"
+                )
+                logger.info("Added user_id column to %s", table)
+            conn.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{table}_user_id ON {table}(user_id)"
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_ensure_user_scoped_schema()
+
+
 # ================= LOGIN REQUIRED DECORATOR =================
 
 def login_required(func):
@@ -259,7 +112,9 @@ def login_required(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if "user_email" not in session:
+        if "user_id" not in session:
+            if request.path.startswith("/api/") or request.method != "GET":
+                return _auth_required_response()
             return redirect("/login")
         return func(*args, **kwargs)
 
@@ -325,7 +180,28 @@ def analytics():
 @app.route("/import")
 @login_required
 def import_page():
-    return render_template("import.html")
+    return render_template(
+        "import.html",
+        validation_summary={},
+        import_result={},
+        detected_columns=[],
+        db_columns=[]
+    )
+
+
+@app.route("/settings")
+@login_required
+def settings():
+
+    conn = get_db()
+    user = _get_user_by_id(conn, _current_user_id())
+    conn.close()
+
+    if not user:
+        session.clear()
+        return redirect("/login")
+
+    return render_template("settings.html", user=user)
 
 
 # ================= SEND OTP =================
@@ -404,7 +280,7 @@ def verify_otp():
         record["name"],
         record["email"],
         record["phone"],
-        record["password"]
+        generate_password_hash(record["password"])
     ))
 
     conn.commit()
@@ -427,17 +303,18 @@ def login():
 
         user = conn.execute("""
             SELECT * FROM users
-            WHERE email=? AND password=?
-        """, (email, password)).fetchone()
+            WHERE email=?
+        """, (email,)).fetchone()
 
-        if not user:
+        if not user or not _password_matches(user["password"], password):
 
             return jsonify({
                 "error": "Invalid login credentials"
             }), 401
 
-
-        session["user_email"] = email
+        session.clear()
+        session["user_id"] = user["id"]
+        session["user_email"] = user["email"]
 
 
         return jsonify({
@@ -461,47 +338,182 @@ def logout():
 
     session.clear()
 
-    return redirect("/")
+    return redirect("/login")
+
+
+@app.route("/change-password", methods=["POST"])
+def change_password():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    current_password = request.form.get("current_password", "")
+    new_password = request.form.get("new_password", "")
+    confirm_password = request.form.get("confirm_password", "")
+
+    if not current_password or not new_password or not confirm_password:
+        return jsonify({"success": False, "error": "All password fields are required"}), 400
+
+    if new_password != confirm_password:
+        return jsonify({"success": False, "error": "Passwords do not match"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"success": False, "error": "New password must be at least 8 characters"}), 400
+
+    conn = get_db()
+    user = _get_user_by_id(conn, _current_user_id())
+
+    if not user:
+        conn.close()
+        session.clear()
+        return redirect("/login")
+
+    if not _password_matches(user["password"], current_password):
+        conn.close()
+        return jsonify({"success": False, "error": "Incorrect password"}), 400
+
+    conn.execute(
+        "UPDATE users SET password = ? WHERE id = ?",
+        (generate_password_hash(new_password), user["id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Password updated successfully"})
+
+
+@app.route("/delete-my-data", methods=["POST"])
+def delete_my_data():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = _current_user_id()
+    conn = get_db()
+
+    delete_order = [
+        "stock_alerts",
+        "sale_items",
+        "purchase_items",
+        "sales",
+        "purchases",
+        "products",
+        "customers",
+        "suppliers",
+        "categories",
+        "expenses",
+    ]
+
+    for table in delete_order:
+        conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Data deleted successfully"})
+
+
+@app.route("/export-my-data")
+def export_my_data():
+
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = _current_user_id()
+    conn = get_db()
+    export_tables = ["customers", "products", "sales", "expenses", "suppliers"]
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for table in export_tables:
+            rows = conn.execute(
+                f"SELECT * FROM {table} WHERE user_id = ? ORDER BY id",
+                (user_id,),
+            ).fetchall()
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+
+            if rows:
+                headers = rows[0].keys()
+                writer.writerow(headers)
+                for row in rows:
+                    writer.writerow([row[key] for key in headers])
+            else:
+                columns = conn.execute(f"PRAGMA table_info({table})").fetchall()
+                writer.writerow([column["name"] for column in columns])
+
+            archive.writestr(f"{table}.csv", csv_buffer.getvalue())
+
+    conn.close()
+
+    zip_buffer.seek(0)
+
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"vyapaariq_user_{user_id}_export.zip",
+    )
 
 
 # ================= DROPDOWN APIs =================
 
 @app.route("/api/categories")
+@login_required
 def categories():
 
     conn = get_db()
+    user_id = _current_user_id()
 
-    rows = conn.execute("SELECT * FROM categories").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM categories WHERE user_id = ? ORDER BY name",
+        (user_id,),
+    ).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/products")
+@login_required
 def products():
 
     conn = get_db()
+    user_id = _current_user_id()
 
-    rows = conn.execute("SELECT * FROM products").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM products WHERE user_id = ? ORDER BY name",
+        (user_id,),
+    ).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/customers")
+@login_required
 def customers():
 
     conn = get_db()
+    user_id = _current_user_id()
 
-    rows = conn.execute("SELECT * FROM customers").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM customers WHERE user_id = ? ORDER BY name",
+        (user_id,),
+    ).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/suppliers")
+@login_required
 def suppliers():
 
     conn = get_db()
+    user_id = _current_user_id()
 
-    rows = conn.execute("SELECT * FROM suppliers").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM suppliers WHERE user_id = ? ORDER BY name",
+        (user_id,),
+    ).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
@@ -510,6 +522,7 @@ def suppliers():
 def stock_alerts():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     rows = conn.execute("""
         SELECT
@@ -522,8 +535,10 @@ def stock_alerts():
         FROM stock_alerts
         LEFT JOIN products
         ON stock_alerts.product_id = products.id
+        AND products.user_id = stock_alerts.user_id
+        WHERE stock_alerts.user_id = ?
         ORDER BY stock_alerts.created_at DESC
-    """).fetchall()
+    """, (user_id,)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
@@ -533,6 +548,7 @@ def add_category():
 
     try:
         data = request.get_json()
+        user_id = _current_user_id()
 
         name = data.get("name")
         description = data.get("description")
@@ -543,9 +559,9 @@ def add_category():
         conn = get_db()
 
         conn.execute("""
-            INSERT INTO categories(name, description)
-            VALUES(?, ?)
-        """, (name, description))
+            INSERT INTO categories(name, description, user_id)
+            VALUES(?, ?, ?)
+        """, (name, description, user_id))
 
         conn.commit()
 
@@ -565,8 +581,17 @@ def add_product():
 
     try:
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
+        category_id = data.get("category_id")
+        supplier_id = data.get("supplier_id")
+
+        if category_id and not _record_belongs_to_user(conn, "categories", category_id, user_id):
+            return jsonify({"error": "Invalid category for this account"}), 400
+
+        if supplier_id and not _record_belongs_to_user(conn, "suppliers", supplier_id, user_id):
+            return jsonify({"error": "Invalid supplier for this account"}), 400
 
         conn.execute("""
             INSERT INTO products(
@@ -578,20 +603,22 @@ def add_product():
                 cost_price,
                 selling_price,
                 current_stock,
-                reorder_level
+                reorder_level,
+                user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
 
             data.get("name"),
-            data.get("category_id"),
-            data.get("supplier_id"),
+            category_id,
+            supplier_id,
             data.get("sku"),
             data.get("unit"),
             data.get("cost_price"),
             data.get("selling_price"),
             data.get("current_stock"),
-            data.get("reorder_level")
+            data.get("reorder_level"),
+            user_id
 
         ))
 
@@ -613,6 +640,7 @@ def add_supplier():
     try:
 
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
 
@@ -623,9 +651,10 @@ def add_supplier():
                 phone,
                 email,
                 city,
-                rating
+                rating,
+                user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
 
             data.get("name"),
@@ -633,7 +662,8 @@ def add_supplier():
             data.get("phone"),
             data.get("email"),
             data.get("city"),
-            data.get("rating")
+            data.get("rating"),
+            user_id
 
         ))
 
@@ -655,20 +685,22 @@ def add_customer():
     try:
 
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
 
         conn.execute("""
             INSERT INTO customers
-            (name, phone, email, city, customer_type)
-            VALUES (?, ?, ?, ?, ?)
+            (name, phone, email, city, customer_type, user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
 
             data.get("name"),
             data.get("phone"),
             data.get("email"),
             data.get("city"),
-            data.get("customer_type")
+            data.get("customer_type"),
+            user_id
 
         ))
 
@@ -694,19 +726,21 @@ def add_expense():
     try:
 
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
 
         conn.execute("""
             INSERT INTO expenses
-            (category, amount, expense_date, description)
-            VALUES (?, ?, ?, ?)
+            (category, amount, expense_date, description, user_id)
+            VALUES (?, ?, ?, ?, ?)
         """, (
 
             data.get("category"),
             data.get("amount"),
             data.get("expense_date"),
-            data.get("description")
+            data.get("description"),
+            user_id
 
         ))
 
@@ -732,23 +766,14 @@ def add_business_profiles():
     try:
 
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
-
-        user = conn.execute("""
-            SELECT id FROM users
-            WHERE email=?
-        """, (session.get("user_email"),)).fetchone()
-
-        if not user:
-            return jsonify({
-                "error": "Logged-in user not found"
-            }), 404
 
         existing_profile = conn.execute("""
             SELECT id FROM business_profiles
             WHERE user_id=?
-        """, (user["id"],)).fetchone()
+        """, (user_id,)).fetchone()
 
         if existing_profile:
             conn.execute("""
@@ -762,7 +787,7 @@ def add_business_profiles():
                 data.get("gst_number"),
                 data.get("city"),
                 data.get("address"),
-                user["id"]
+                user_id
 
             ))
         else:
@@ -773,7 +798,7 @@ def add_business_profiles():
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (
 
-                user["id"],
+                user_id,
                 data.get("business_name"),
                 data.get("business_type"),
                 data.get("gst_number"),
@@ -804,23 +829,30 @@ def add_stock_alert():
 
     try:
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
+        product_id = data.get("product_id")
+
+        if product_id and not _record_belongs_to_user(conn, "products", product_id, user_id):
+            return jsonify({"error": "Invalid product for this account"}), 400
 
         conn.execute("""
             INSERT INTO stock_alerts(
                 product_id,
                 alert_type,
                 threshold,
-                is_active
+                is_active,
+                user_id
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
         """, (
 
-            data.get("product_id"),
+            product_id,
             data.get("alert_type"),
             data.get("threshold"),
-            1
+            1,
+            user_id
 
         ))
 
@@ -843,8 +875,18 @@ def add_sale():
     try:
 
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
+        customer_id = int(data["customer_id"])
+
+        if not _record_belongs_to_user(conn, "customers", customer_id, user_id):
+            return jsonify({"error": "Invalid customer for this account"}), 400
+
+        for item in data["items"]:
+            product_id = int(item["product_id"])
+            if not _record_belongs_to_user(conn, "products", product_id, user_id):
+                return jsonify({"error": "Invalid product for this account"}), 400
 
         total_amount = 0
 
@@ -862,15 +904,16 @@ def add_sale():
         # insert into sales table
         cursor = conn.execute("""
             INSERT INTO sales
-            (customer_id, sale_date, total_amount, payment_method, notes)
-            VALUES (?, ?, ?, ?, ?)
+            (customer_id, sale_date, total_amount, payment_method, notes, user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
 
-            int(data["customer_id"]),
+            customer_id,
             data["sale_date"],
             total_amount,
             data["payment_method"],
-            data.get("notes", "")
+            data.get("notes", ""),
+            user_id
 
         ))
 
@@ -879,6 +922,7 @@ def add_sale():
 
         # insert each item
         for item in data["items"]:
+            product_id = int(item["product_id"])
 
             qty = float(item["quantity"])
             price = float(item["price"])
@@ -888,16 +932,17 @@ def add_sale():
 
             conn.execute("""
                 INSERT INTO sale_items
-                (sale_id, product_id, quantity, price, discount, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (sale_id, product_id, quantity, price, discount, subtotal, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
 
                 sale_id,
-                int(item["product_id"]),
+                product_id,
                 qty,
                 price,
                 discount,
-                subtotal
+                subtotal,
+                user_id
 
             ))
 
@@ -924,35 +969,48 @@ def add_purchase():
     try:
 
         data = request.get_json()
+        user_id = _current_user_id()
 
         conn = get_db()
+        supplier_id = data.get("supplier_id")
+
+        if supplier_id and not _record_belongs_to_user(conn, "suppliers", supplier_id, user_id):
+            return jsonify({"error": "Invalid supplier for this account"}), 400
+
+        for item in data.get("items", []):
+            product_id = item["product_id"]
+            if not _record_belongs_to_user(conn, "products", product_id, user_id):
+                return jsonify({"error": "Invalid product for this account"}), 400
 
         cursor = conn.execute("""
             INSERT INTO purchases
-            (supplier_id, purchase_date, status)
-            VALUES (?, ?, ?)
+            (supplier_id, purchase_date, status, user_id)
+            VALUES (?, ?, ?, ?)
         """, (
 
-            data.get("supplier_id"),
+            supplier_id,
             data.get("purchase_date"),
-            data.get("status")
+            data.get("status"),
+            user_id
 
         ))
 
         purchase_id = cursor.lastrowid
 
         for item in data.get("items", []):
+            product_id = item["product_id"]
 
             conn.execute("""
                 INSERT INTO purchase_items
-                (purchase_id, product_id, quantity, unit_cost)
-                VALUES (?, ?, ?, ?)
+                (purchase_id, product_id, quantity, unit_cost, user_id)
+                VALUES (?, ?, ?, ?, ?)
             """, (
 
                 purchase_id,
-                item["product_id"],
+                product_id,
                 item["quantity"],
-                item["unit_cost"]
+                item["unit_cost"],
+                user_id
 
             ))
 
@@ -975,53 +1033,103 @@ def add_purchase():
 ###################################
 
 @app.route("/api/dashboard-summary")
+@login_required
 def dashboard_summary():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     total_sales = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_purchases = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_customers = conn.execute("""
         SELECT COUNT(*)
         FROM customers
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_products = conn.execute("""
         SELECT COUNT(*)
         FROM products
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_suppliers = conn.execute("""
         SELECT COUNT(*)
         FROM suppliers
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_orders = conn.execute("""
         SELECT COUNT(*)
         FROM sales
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
+
+    total_profit = conn.execute("""
+        SELECT ROUND(COALESCE(SUM(
+            COALESCE(si.subtotal, 0) - (COALESCE(si.quantity, 0) * COALESCE(p.cost_price, 0))
+        ), 0), 2)
+        FROM sale_items si
+        JOIN products p
+        ON p.id = si.product_id
+        AND p.user_id = si.user_id
+        WHERE si.user_id = ?
+    """, (user_id,)).fetchone()[0]
+
+    top_product_row = conn.execute("""
+        SELECT
+            p.name,
+            COALESCE(SUM(si.quantity), 0) AS total_qty,
+            ROUND(COALESCE(SUM(si.subtotal), 0), 2) AS revenue
+        FROM sale_items si
+        JOIN products p
+        ON p.id = si.product_id
+        AND p.user_id = si.user_id
+        WHERE si.user_id = ?
+        GROUP BY p.id, p.name
+        ORDER BY total_qty DESC, revenue DESC, p.name ASC
+        LIMIT 1
+    """, (user_id,)).fetchone()
+
+    trend_rows = conn.execute("""
+        SELECT
+            strftime('%Y-%m', sale_date) AS month,
+            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+        FROM sales
+        WHERE user_id = ?
+        AND sale_date IS NOT NULL
+        GROUP BY month
+        ORDER BY month
+    """, (user_id,)).fetchall()
 
     low_stock = conn.execute("""
         SELECT COUNT(*)
         FROM products
-        WHERE current_stock <= COALESCE(reorder_level, 0)
-    """).fetchone()[0]
+        WHERE user_id = ?
+        AND current_stock <= reorder_level
+    """, (user_id,)).fetchone()[0]
 
     expense_ratio = (total_expenses / total_sales * 100) if total_sales else 0
     avg_order_value = (total_sales / total_orders) if total_orders else 0
+    profit_margin = (total_profit / total_sales * 100) if total_sales else 0
+    revenue_chart = [float(row["revenue"] or 0) for row in trend_rows[-6:]]
+    revenue_labels = [row["month"] for row in trend_rows[-6:] if row["month"]]
 
     return jsonify({
         "total_sales": total_sales,
@@ -1031,66 +1139,89 @@ def dashboard_summary():
         "total_products": total_products,
         "total_suppliers": total_suppliers,
         "total_orders": total_orders,
+        "total_profit": total_profit,
+        "profit_margin": round(profit_margin, 2),
         "avg_order_value": avg_order_value,
         "expense_ratio": round(expense_ratio, 2),
-        "low_stock_count": low_stock
+        "low_stock_count": low_stock,
+        "top_product": top_product_row["name"] if top_product_row else "N/A",
+        "top_product_qty": int(top_product_row["total_qty"]) if top_product_row else 0,
+        "top_product_revenue": float(top_product_row["revenue"] or 0) if top_product_row else 0,
+        "revenue_chart": revenue_chart,
+        "revenue_chart_labels": revenue_labels,
     })
 
 
 @app.route("/api/sales-trend")
+@app.route("/api/monthly-sales-trend")
+@login_required
 def sales_trend():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     rows = conn.execute("""
         SELECT
-            strftime('%Y-%m', sale_date) AS sale_month,
-            ROUND(COALESCE(SUM(total_amount), 0), 2) AS total
+            strftime('%Y-%m', sale_date) AS month,
+            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
-        WHERE sale_date IS NOT NULL
-        GROUP BY sale_month
-        ORDER BY sale_month
-    """).fetchall()
+        WHERE user_id = ?
+        AND sale_date IS NOT NULL
+        GROUP BY month
+        ORDER BY month
+    """, (user_id,)).fetchall()
 
     labels = []
     values = []
+    rows_payload = []
 
     for row in rows:
-        month_value = row["sale_month"]
+        month_value = row["month"]
         if not month_value:
             continue
         year, month = month_value.split("-")
         labels.append(datetime.strptime(f"{year}-{month}-01", "%Y-%m-%d").strftime("%b"))
-        values.append(float(row["total"] or 0))
+        revenue = float(row["revenue"] or 0)
+        values.append(revenue)
+        rows_payload.append({
+            "month": month_value,
+            "revenue": revenue
+        })
 
     target = max(values) if values else 0
 
     return jsonify({
         "labels": labels,
         "values": values,
-        "target": target
+        "target": target,
+        "rows": rows_payload
     })
 
 
 @app.route("/api/profit-analysis")
+@login_required
 def profit_analysis():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     revenue = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     cost = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     profit = revenue - cost - expenses
     gross_margin = ((revenue - cost) / revenue * 100) if revenue else 0
@@ -1110,9 +1241,11 @@ def profit_analysis():
 
 
 @app.route("/api/customer-insights")
+@login_required
 def customer_insights():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     rows = conn.execute("""
         SELECT
@@ -1121,18 +1254,22 @@ def customer_insights():
         FROM sales
         JOIN customers
         ON customers.id = sales.customer_id
+        AND customers.user_id = sales.user_id
+        WHERE sales.user_id = ?
         GROUP BY customers.id, customers.name
         ORDER BY total DESC
         LIMIT 5
-    """).fetchall()
+    """, (user_id,)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
 
 @app.route("/api/inventory-insights")
+@login_required
 def inventory_insights():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     rows = conn.execute("""
         SELECT
@@ -1145,27 +1282,33 @@ def inventory_insights():
         FROM products
         LEFT JOIN categories
         ON categories.id = products.category_id
+        AND categories.user_id = products.user_id
+        WHERE products.user_id = ?
         ORDER BY products.name
-    """).fetchall()
+    """, (user_id,)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
 
 @app.route("/api/expense-breakdown")
+@login_required
 def expense_breakdown():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     total_expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
-    """).fetchone()[0]
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     current_month = conn.execute("""
         SELECT strftime('%Y-%m', MAX(expense_date))
         FROM expenses
-        WHERE expense_date IS NOT NULL
-    """).fetchone()[0]
+        WHERE user_id = ?
+        AND expense_date IS NOT NULL
+    """, (user_id,)).fetchone()[0]
 
     previous_month = None
     if current_month:
@@ -1178,9 +1321,10 @@ def expense_breakdown():
             category,
             ROUND(COALESCE(SUM(amount), 0), 2) AS amount
         FROM expenses
+        WHERE user_id = ?
         GROUP BY category
         ORDER BY amount DESC
-    """).fetchall()
+    """, (user_id,)).fetchall()
 
     result = []
     for row in rows:
@@ -1194,15 +1338,15 @@ def expense_breakdown():
             current_amount = conn.execute("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE category = ? AND strftime('%Y-%m', expense_date) = ?
-            """, (row["category"], current_month)).fetchone()[0] or 0
+                WHERE user_id = ? AND category = ? AND strftime('%Y-%m', expense_date) = ?
+            """, (user_id, row["category"], current_month)).fetchone()[0] or 0
 
         if previous_month:
             previous_amount = conn.execute("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE category = ? AND strftime('%Y-%m', expense_date) = ?
-            """, (row["category"], previous_month)).fetchone()[0] or 0
+                WHERE user_id = ? AND category = ? AND strftime('%Y-%m', expense_date) = ?
+            """, (user_id, row["category"], previous_month)).fetchone()[0] or 0
 
         if previous_amount:
             change = ((current_amount - previous_amount) / previous_amount) * 100
@@ -1222,9 +1366,11 @@ def expense_breakdown():
 
 
 @app.route("/api/top-products")
+@login_required
 def top_products():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     rows = conn.execute("""
         SELECT
@@ -1233,378 +1379,32 @@ def top_products():
         FROM sale_items
         JOIN products
         ON products.id = sale_items.product_id
+        AND products.user_id = sale_items.user_id
+        WHERE sale_items.user_id = ?
         GROUP BY products.id, products.name
         ORDER BY revenue DESC
         LIMIT 5
-    """).fetchall()
+    """, (user_id,)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
 
 @app.route("/api/inventory-value")
+@login_required
 def inventory_value():
 
     conn = get_db()
+    user_id = _current_user_id()
 
     value = conn.execute("""
         SELECT ROUND(COALESCE(SUM(COALESCE(current_stock, 0) * COALESCE(cost_price, 0)), 0), 2)
         FROM products
-    """).fetchone()[0] or 0
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0] or 0
 
     return jsonify({
         "inventory_value": value
     })
-
-
-# ================= FILE PREVIEW =================
-
-@app.route("/upload-preview", methods=["POST"])
-def upload_preview():
-
-    file = request.files.get("file")
-    sheet = request.form.get("sheet")
-
-    if not file:
-        return jsonify({"columns": [], "rows": [], "total_rows": 0})
-
-    try:
-
-        if file.filename.endswith(("xlsx", "xls")):
-            df = pd.read_excel(file, sheet_name=sheet)
-        else:
-            df = pd.read_csv(file)
-
-        preview = df.head(10)
-
-        return jsonify(dict(
-            columns=list(preview.columns),
-            rows=preview.values.tolist(),
-            total_rows=len(df),
-            sheet=sheet
-        ))
-
-    except Exception as e:
-
-        print("Preview error:", e)
-
-        return jsonify({"columns": [], "rows": [], "total_rows": 0})
-
-
-@app.route("/get-excel-sheets", methods=["POST"])
-def get_excel_sheets():
-
-    file = request.files.get("file")
-
-    if not file:
-        return jsonify({"sheets": []})
-
-    try:
-
-        excel = pd.ExcelFile(file)
-
-        return jsonify({
-            "sheets": excel.sheet_names
-        })
-
-    except Exception as e:
-
-        print("Sheet detection error:", e)
-
-        return jsonify({"sheets": []})
-
-# ================= FILE IMPORT =================
-
-@app.route("/upload-confirm", methods=["POST"])
-def upload_confirm():
-
-    file = request.files["file"]
-
-    dtype = request.form["type"]
-
-    df = pd.read_excel(file) if file.filename.endswith("xlsx") else pd.read_csv(file)
-
-    conn = get_db()
-
-    inserted = 0
-
-    if dtype == "customers":
-
-        for _, row in df.iterrows():
-
-            conn.execute("""
-                INSERT INTO customers(name,phone,email,city,customer_type)
-                VALUES(?,?,?,?,?)
-            """, tuple(row))
-
-            inserted += 1
-
-    conn.commit()
-
-    return jsonify(dict(
-        inserted=inserted,
-        errors=0,
-        type=dtype
-    ))
-
-
-@app.route("/import-sheet", methods=["POST"])
-def import_sheet():
-
-    file = request.files.get("file")
-    sheet = request.form.get("sheet")
-    dataset = request.form.get("dataset")
-
-    if not file or not dataset:
-
-        return jsonify(dict(inserted=0, errors=1))
-
-    try:
-
-        df = pd.read_excel(file, sheet_name=sheet)
-
-        df = normalize_columns(df, dataset)
-
-    
-
-        conn = get_db()
-
-        cursor = conn.cursor()
-
-        inserted = 0
-        errors = 0
-
-
-        for index, raw_row in df.iterrows():
-            
-            row = resolve_foreign_keys(raw_row, dataset, conn)
-            logger.debug("Import row dataset=%s index=%s row=%s", dataset, index, row)
-            
-            try:
-
-                if dataset == "customers":
-
-                    cursor.execute("""
-                        INSERT INTO customers
-                        (name, phone, email, city, customer_type)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (
-
-                        g(row, "name"),
-                        g(row, "phone"),
-                        g(row, "email"),
-                        g(row, "city"),
-                        g(row, "customer_type")
-
-                    ))
-
-
-                elif dataset == "suppliers":
-
-                    cursor.execute("""
-                        INSERT INTO suppliers
-                        (name, contact_person, phone, email, city, rating)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
-
-                        g(row, "name"),
-                        g(row, "contact_person"),
-                        g(row, "phone"),
-                        g(row, "email"),
-                        g(row, "city"),
-                        g(row, "rating")
-
-                    ))
-
-
-                elif dataset == "categories":
-
-                    cursor.execute("""
-                        INSERT INTO categories
-                        (name, description)
-                        VALUES (?, ?)
-                    """, (
-
-                        g(row, "name"),
-                        g(row, "description")
-
-                    ))
-
-
-                elif dataset == "products":
-                    if row.get("category_id") is None and "category_id" in row:
-                        logger.warning("Unresolved product category at row %s: %s", index, row)
-                    if row.get("supplier_id") is None and "supplier_id" in row:
-                        logger.warning("Unresolved product supplier at row %s: %s", index, row)
-
-                    cursor.execute("""
-                        INSERT INTO products
-                        (
-                            name,
-                            category_id,
-                            supplier_id,
-                            sku,
-                            unit,
-                            cost_price,
-                            selling_price,
-                            current_stock,
-                            reorder_level
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-
-                        g(row, "name"),
-                        g(row, "category_id"),
-                        g(row, "supplier_id"),
-                        g(row, "sku"),
-                        g(row, "unit"),
-                        g(row, "cost_price"),
-                        g(row, "selling_price"),
-                        g(row, "current_stock"),
-                        g(row, "reorder_level")
-
-                    ))
-
-
-                elif dataset == "purchases":
-                    if row.get("supplier_id") is None and "supplier_id" in row:
-                        logger.warning("Unresolved purchase supplier at row %s: %s", index, row)
-
-                    cursor.execute("""
-                        INSERT INTO purchases
-                        (supplier_id, purchase_date, total_amount, status)
-                        VALUES (?, ?, ?, ?)
-                    """, (
-
-                        g(row, "supplier_id"),
-                        g(row, "purchase_date"),
-                        g(row, "total_amount"),
-                        g(row, "status")
-
-                    ))
-
-
-                elif dataset == "purchase_items":
-                    if row.get("product_id") is None and "product_id" in row:
-                        logger.warning("Unresolved purchase item product at row %s: %s", index, row)
-
-                    cursor.execute("""
-                        INSERT INTO purchase_items
-                        (purchase_id, product_id, quantity, unit_cost)
-                        VALUES (?, ?, ?, ?)
-                    """, (
-
-                        g(row, "purchase_id"),
-                        g(row, "product_id"),
-                        g(row, "quantity"),
-                        g(row, "unit_cost")
-
-                    ))
-
-
-                elif dataset == "sales":
-                    if row.get("customer_id") is None and "customer_id" in row:
-                        logger.warning("Unresolved sale customer at row %s: %s", index, row)
-
-                    cursor.execute("""
-                        INSERT INTO sales
-                        (customer_id, sale_date, total_amount, payment_method, notes)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (
-
-                        g(row, "customer_id"),
-                        g(row, "sale_date"),
-                        g(row, "total_amount"),
-                        g(row, "payment_method"),
-                        g(row, "notes")
-
-                    ))
-
-
-                elif dataset == "sale_items":
-                    if row.get("product_id") is None and "product_id" in row:
-                        logger.warning("Unresolved sale item product at row %s: %s", index, row)
-
-                    cursor.execute("""
-                        INSERT INTO sale_items
-                        (sale_id, product_id, quantity, price, discount, subtotal)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
-
-                        g(row, "sale_id"),
-                        g(row, "product_id"),
-                        g(row, "quantity"),
-                        g(row, "price"),
-                        g(row, "discount"),
-                        g(row, "subtotal")
-
-                    ))
-
-
-                elif dataset == "expenses":
-
-                    cursor.execute("""
-                        INSERT INTO expenses
-                        (category, amount, expense_date, description)
-                        VALUES (?, ?, ?, ?)
-                    """, (
-
-                        g(row, "category"),
-                        g(row, "amount"),
-                        g(row, "expense_date"),
-                        g(row, "description")
-
-                    ))
-
-
-                elif dataset == "stock_alerts":
-
-                    cursor.execute("""
-                        INSERT INTO stock_alerts
-                        (product_id, alert_type, threshold, is_active)
-                        VALUES (?, ?, ?, ?)
-                    """, (
-
-                        g(row, "product_id"),
-                        g(row, "alert_type"),
-                        g(row, "threshold"),
-                        g(row, "is_active")
-
-                    ))
-
-
-                inserted += 1
-
-
-            except Exception as e:
-
-                logger.exception("Row skipped for dataset=%s index=%s", dataset, index)
-                errors += 1
-
-
-        conn.commit()
-
-
-        return jsonify(dict(
-
-            inserted=inserted,
-            errors=errors,
-            dataset=dataset
-
-        ))
-
-
-    except Exception as e:
-
-        print("Import failed:", e)
-
-        return jsonify(dict(
-
-            inserted=0,
-            errors=1,
-            dataset=dataset
-
-        ))
-     
 
 # ================= RUN SERVER =================
 

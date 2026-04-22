@@ -75,6 +75,15 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .top-btn.primary:hover{box-shadow:0 4px 20px var(--glow);transform:translateY(-1px)}
 .top-btn.secondary{background:var(--g2);color:#fff;border-color:transparent;font-weight:700}
 .top-btn.secondary:hover{box-shadow:0 4px 20px var(--glowb);transform:translateY(-1px)}
+.profile-menu{position:relative}
+.profile-menu summary{list-style:none}
+.profile-menu summary::-webkit-details-marker{display:none}
+.profile-trigger{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;font-family:var(--fm);border:1px solid var(--bd);color:var(--tx2);background:transparent;cursor:pointer;transition:all .22s}
+.profile-trigger:hover,.profile-menu[open] .profile-trigger{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.06)}
+.profile-avatar{width:22px;height:22px;border-radius:7px;background:var(--g1);display:flex;align-items:center;justify-content:center;color:#000;font-size:10px;font-weight:800}
+.profile-panel{position:absolute;right:0;top:calc(100% + 8px);min-width:180px;background:var(--card2);border:1px solid var(--bd);border-radius:12px;padding:8px;box-shadow:0 18px 40px rgba(0,0,0,.28)}
+.profile-link{display:block;padding:10px 12px;border-radius:9px;color:var(--tx2);font:700 11.5px var(--fm)}
+.profile-link:hover{background:rgba(0,212,255,.06);color:var(--cyan)}
 .tog{width:38px;height:20px;border-radius:10px;background:var(--sur);border:1px solid var(--bd);cursor:pointer;display:flex;align-items:center;padding:2px}
 .tok{width:14px;height:14px;border-radius:50%;background:var(--g1);font-size:8px;display:flex;align-items:center;justify-content:center;transition:transform .3s var(--ease)}
 [data-theme="light"] .tok{transform:translateX(18px)}
@@ -301,6 +310,9 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
     <div class="nav-item" onclick="window.location.href='/import'">
       <span class="nav-icon">⬆️</span><span>Import Data</span>
     </div>
+    <div class="nav-item" onclick="window.location.href='/settings'">
+      <span class="nav-icon">⚙️</span><span>Settings</span>
+    </div>
   </nav>
   <div class="sb-footer">
     <strong style="font-size:11px;color:var(--tx2)">VyapaarIQ v1.0</strong>
@@ -327,6 +339,16 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
     <button class="top-btn secondary hide-sm" onclick="window.location.href='/analytics'">📊 Analytics</button>
     <button class="top-btn hide-sm" onclick="window.location.href='/import'">⬆️ Import Dataset</button>
     <button class="tog" onclick="toggleTheme()" title="Toggle theme"><div class="tok" id="knob">🌙</div></button>
+    <details class="profile-menu">
+      <summary class="profile-trigger">
+        <span class="profile-avatar">U{{ session.get("user_id", "") }}</span>
+        <span>Profile</span>
+      </summary>
+      <div class="profile-panel">
+        <a class="profile-link" href="/settings">Settings</a>
+        <a class="profile-link" href="/logout">Logout</a>
+      </div>
+    </details>
     <button class="top-btn primary" onclick="showPanel(document.querySelector('[data-panel=panel-sales]'),'panel-sales','Sales Entry')">＋ New Sale</button>
   </div>
 </div>
@@ -683,20 +705,22 @@ function initDates(){
 /* KPIs */
 function loadKPIs(){
   toast('Fetching dashboard data…','inf',2000);
-  fetch('/api/dashboard-summary')
-    .then(r=>r.json())
-    .then(d=>{
+  Promise.all([
+    fetch('/api/dashboard-summary').then(r=>r.json()),
+    fetch('/api/monthly-sales-trend').then(r=>r.json())
+  ])
+    .then(([d, trend])=>{
       renderKPI('kpi-sales',fmtINR(d.total_sales),`↑ +${d.sales_growth||0}% this month`,'up');
       renderKPI('kpi-profit',fmtINR(d.total_profit),`↑ +${d.profit_margin||0}% margin`,'up');
       renderKPI('kpi-customers',d.total_customers,`↑ +${d.new_customers||0} new`,'up');
       renderKPI('kpi-alerts',d.low_stock_count||0,`⚠ ${d.low_stock_count||0} products low`,'warn');
-      renderKPI('kpi-top-product',d.top_product||'N/A',`₹${fmtINR(d.top_product_revenue||0)} revenue`,'up');
+      renderKPI('kpi-top-product',d.top_product||'N/A',`${fmtINR(d.top_product_revenue||0)} revenue • ${d.top_product_qty||0} units`,'up');
       $('qs-purchases').textContent = d.total_purchases||'—';
       $('qs-products').textContent  = d.total_products||'—';
       $('qs-expenses').textContent  = fmtINR(d.total_expenses);
       $('qs-suppliers').textContent = d.total_suppliers||'—';
       if(d.low_stock_count) $('alertBadge').textContent = d.low_stock_count;
-      if(d.revenue_chart) renderRevChart(d.revenue_chart);
+      renderRevChart(trend);
       toast('Dashboard data refreshed','suc');
     })
     .catch(()=>{
@@ -707,7 +731,7 @@ function loadKPIs(){
       renderKPI('kpi-top-product','Basmati Rice 5kg','● ₹1,24,600 revenue','up');
       $('qs-purchases').textContent='42';$('qs-products').textContent='186';
       $('qs-expenses').textContent='₹38,200';$('qs-suppliers').textContent='18';
-      renderRevChart([62,78,95,71,88,100]);
+      renderRevChart({ labels:['Oct','Nov','Dec','Jan','Feb','Mar'], values:[62,78,95,71,88,100] });
       addActivity('Demo data loaded','API not connected — showing mock data','var(--amber)');
     });
 }
@@ -722,13 +746,18 @@ function renderKPI(id,val,change,cls){
 function renderRevChart(data){
   const wrap=$('revBars'); if(!wrap) return;
   wrap.innerHTML='';
-  const labels=['Oct','Nov','Dec','Jan','Feb','Mar'];
-  const max=Math.max(...data);
-  data.forEach((v,i)=>{
+  const values = Array.isArray(data) ? data : (data?.values || []);
+  const labels = Array.isArray(data) ? ['Oct','Nov','Dec','Jan','Feb','Mar'] : (data?.labels || []);
+  if(!values.length){
+    wrap.innerHTML='<div class="empty-state" style="grid-column:1/-1">No monthly revenue data available.</div>';
+    return;
+  }
+  const max=Math.max(...values, 0);
+  values.forEach((v,i)=>{
     const pct=max>0?(v/max*100):0;
     const col=document.createElement('div');
     col.className='bar-col';
-    col.innerHTML=`<div class="bar-val">${Math.round(v)}%</div><div class="bar-fill" style="height:0%;transition-delay:${i*.08}s" data-h="${pct}%"></div><div class="bar-label">${labels[i]||''}</div>`;
+    col.innerHTML=`<div class="bar-val">${fmtINR(v)}</div><div class="bar-fill" style="height:0%;transition-delay:${i*.08}s" data-h="${pct}%"></div><div class="bar-label">${labels[i]||''}</div>`;
     wrap.appendChild(col);
   });
   requestAnimationFrame(()=>{ wrap.querySelectorAll('.bar-fill').forEach(b=>b.style.height=b.dataset.h); });

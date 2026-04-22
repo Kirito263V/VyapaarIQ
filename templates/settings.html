@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VyapaarIQ Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07111f;--bg2:#0a1527;--card:#0d182b;--card2:#111f37;--line:rgba(97,167,255,.12);
+  --text:#e9f1ff;--muted:#90a6c5;--cyan:#00d4ff;--blue:#5b8cff;--green:#22d87a;--amber:#f59e0b;--red:#ef4444;
+  --grad:linear-gradient(135deg,#00d4ff,#5b8cff);--grad2:linear-gradient(135deg,#5b8cff,#8a7cff);--grad3:linear-gradient(135deg,#22d87a,#00d4ff);
+  --font:'Plus Jakarta Sans',sans-serif;--display:'Syne',sans-serif;--mono:'DM Mono',monospace;
+}
+[data-theme="light"]{
+  --bg:#edf4ff;--bg2:#f8fbff;--card:#ffffff;--card2:#f3f7ff;--line:rgba(34,89,173,.12);
+  --text:#0b1324;--muted:#59708f;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:radial-gradient(circle at top right,rgba(0,212,255,.09),transparent 24%),linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text)}
+a{text-decoration:none;color:inherit}
+button,input{font:inherit}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--line);backdrop-filter:blur(18px);background:rgba(7,17,31,.84)}
+[data-theme="light"] .topbar{background:rgba(237,244,255,.88)}
+.brand{display:flex;align-items:center;gap:12px;font-family:var(--display);font-weight:800}
+.brand-badge{width:34px;height:34px;border-radius:10px;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#001019;font-size:14px}
+.brand-name{font-size:18px;letter-spacing:-.5px}
+.top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:transparent;color:var(--muted);padding:9px 14px;border-radius:10px;cursor:pointer;transition:.2s ease}
+.btn:hover{border-color:rgba(0,212,255,.35);color:var(--cyan)}
+.btn.primary{background:var(--grad);color:#02111d;border:none;font-weight:700}
+.btn.danger{border-color:rgba(239,68,68,.22);color:#ffb5b5}
+.btn.danger:hover{border-color:rgba(239,68,68,.42);color:#ffd0d0;background:rgba(239,68,68,.08)}
+.profile-menu{position:relative}
+.profile-menu summary{list-style:none}
+.profile-menu summary::-webkit-details-marker{display:none}
+.profile-trigger{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:transparent;color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer}
+.profile-trigger:hover,.profile-menu[open] .profile-trigger{border-color:rgba(0,212,255,.35);color:var(--cyan)}
+.profile-avatar{width:28px;height:28px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#02111d;font:700 12px var(--mono)}
+.profile-panel{position:absolute;right:0;top:calc(100% + 10px);min-width:190px;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:10px;box-shadow:0 18px 40px rgba(0,0,0,.28)}
+.profile-link{display:block;padding:10px 12px;border-radius:10px;color:var(--muted);font:600 12px var(--mono)}
+.profile-link:hover{background:rgba(0,212,255,.06);color:var(--cyan)}
+.wrap{max-width:1240px;margin:0 auto;padding:28px}
+.hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:28px}
+.eyebrow{font:700 11px var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:8px}
+.hero h1{margin:0;font:800 32px var(--display);letter-spacing:-1px}
+.hero p{margin:10px 0 0;color:var(--muted);max-width:760px;line-height:1.6}
+.layout{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+.stack{display:flex;flex-direction:column;gap:16px}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.015),transparent),var(--card);border:1px solid var(--line);border-radius:16px}
+.card-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 0}
+.card-title{font:800 15px var(--display);display:flex;align-items:center;gap:10px}
+.title-icon{width:30px;height:30px;border-radius:10px;background:rgba(0,212,255,.09);display:flex;align-items:center;justify-content:center}
+.badge{padding:5px 9px;border-radius:999px;font:700 10px var(--mono);border:1px solid var(--line);color:var(--cyan)}
+.card-body{padding:18px 20px 20px}
+.info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.info-box{padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.02)}
+.info-label{font:700 10px var(--mono);letter-spacing:1px;color:var(--muted);text-transform:uppercase}
+.info-value{margin-top:8px;font:800 20px var(--display);letter-spacing:-.6px;word-break:break-word}
+.info-sub{margin-top:6px;font:11px var(--mono);color:var(--muted)}
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.form-group{display:flex;flex-direction:column;gap:7px}
+.form-group.full{grid-column:1/-1}
+.form-label{font:700 11px var(--mono);letter-spacing:.6px;color:var(--muted);text-transform:uppercase}
+.input{width:100%;padding:12px 14px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;color:var(--text);outline:none}
+.input:focus{border-color:rgba(0,212,255,.35);box-shadow:0 0 0 3px rgba(0,212,255,.08)}
+.helper{margin-top:4px;font:11px var(--mono);color:var(--muted);line-height:1.5}
+.alert{display:none;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);font:600 12px var(--mono);margin-bottom:14px}
+.alert.show{display:flex}
+.alert.success{background:rgba(34,216,122,.08);color:var(--green);border-color:rgba(34,216,122,.2)}
+.alert.error{background:rgba(239,68,68,.08);color:#ffb1b1;border-color:rgba(239,68,68,.2)}
+.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.action-card{padding:16px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.02)}
+.action-title{font:800 14px var(--display);margin-bottom:6px}
+.action-copy{font:12px var(--mono);color:var(--muted);line-height:1.6;margin-bottom:14px}
+.action-buttons{display:flex;flex-wrap:wrap;gap:10px}
+#toast-container{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:10px;z-index:99}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.25);border:1px solid var(--line);background:var(--card2);font:12px var(--mono)}
+.toast.suc{color:var(--green)}.toast.err{color:#ff9f9f}.toast.inf{color:var(--cyan)}
+.toast.out{opacity:0;transform:translateX(20px);transition:all .3s ease}
+.toast-close{margin-left:auto;background:none;border:none;color:inherit;cursor:pointer}
+@media(max-width:980px){.layout{grid-template-columns:1fr}.actions,.form-grid,.info-grid{grid-template-columns:1fr}}
+@media(max-width:720px){.wrap{padding:20px 16px}.hero{flex-direction:column;align-items:flex-start}.topbar{padding:14px 16px}.top-actions{justify-content:flex-end}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-badge">ST</div>
+    <div class="brand-name">VyapaarIQ Settings</div>
+  </div>
+  <div class="top-actions">
+    <a class="btn" href="/analytics">Analytics</a>
+    <a class="btn" href="/import">Import</a>
+    <button class="btn" onclick="toggleTheme()">Theme</button>
+    <details class="profile-menu">
+      <summary class="profile-trigger">
+        <span class="profile-avatar">{{ (user["name"] or "U")[:1] | upper }}</span>
+        <span>Profile</span>
+      </summary>
+      <div class="profile-panel">
+        <a class="profile-link" href="/settings">Settings</a>
+        <a class="profile-link" href="/logout">Logout</a>
+      </div>
+    </details>
+    <a class="btn primary" href="/dashboard">Back to Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Account Center</div>
+      <h1>Manage your account, security, and data</h1>
+      <p>Update password access, export your business records, remove only your own dataset, and switch accounts without affecting the analytics dashboard experience.</p>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="stack">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><span class="title-icon">ID</span>Account Info</div>
+          <span class="badge">Live Session</span>
+        </div>
+        <div class="card-body">
+          <div class="info-grid">
+            <div class="info-box">
+              <div class="info-label">User ID</div>
+              <div class="info-value">{{ user["id"] }}</div>
+              <div class="info-sub">Loaded from `session["user_id"]`.</div>
+            </div>
+            <div class="info-box">
+              <div class="info-label">Username</div>
+              <div class="info-value">{{ user["name"] or "Not available" }}</div>
+              <div class="info-sub">Primary account identity for this workspace.</div>
+            </div>
+            <div class="info-box" style="grid-column:1/-1">
+              <div class="info-label">Email</div>
+              <div class="info-value" style="font-size:18px">{{ user["email"] or "Not available" }}</div>
+              <div class="info-sub">Used for login and account recovery flows when available.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><span class="title-icon">PW</span>Security</div>
+          <span class="badge">Password</span>
+        </div>
+        <div class="card-body">
+          <div class="alert success" id="passwordSuccess"></div>
+          <div class="alert error" id="passwordError"></div>
+          <form id="passwordForm">
+            <div class="form-grid">
+              <div class="form-group full">
+                <label class="form-label" for="current_password">Current Password</label>
+                <input class="input" id="current_password" name="current_password" type="password" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="new_password">New Password</label>
+                <input class="input" id="new_password" name="new_password" type="password" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="confirm_password">Confirm Password</label>
+                <input class="input" id="confirm_password" name="confirm_password" type="password" required>
+              </div>
+            </div>
+            <div class="helper">Use at least 8 characters. Password update success and error states appear instantly below this form.</div>
+            <div style="margin-top:16px">
+              <button class="btn primary" type="submit">Change Password</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><span class="title-icon">AC</span>Account Actions</div>
+          <span class="badge">Protected</span>
+        </div>
+        <div class="card-body">
+          <div class="alert success" id="actionSuccess"></div>
+          <div class="alert error" id="actionError"></div>
+          <div class="actions">
+            <div class="action-card">
+              <div class="action-title">Logout</div>
+              <div class="action-copy">End the current session and return to the login screen.</div>
+              <div class="action-buttons">
+                <a class="btn" href="/logout">Logout</a>
+              </div>
+            </div>
+            <div class="action-card">
+              <div class="action-title">Switch Account</div>
+              <div class="action-copy">Sign out now and log in with a different VyapaarIQ account.</div>
+              <div class="action-buttons">
+                <a class="btn" href="/logout">Switch Account</a>
+              </div>
+            </div>
+            <div class="action-card">
+              <div class="action-title">Delete My Data</div>
+              <div class="action-copy">Delete only the current user’s imported and transactional dataset.</div>
+              <div class="action-buttons">
+                <button class="btn danger" type="button" onclick="deleteMyData()">Delete My Data</button>
+              </div>
+            </div>
+            <div class="action-card">
+              <div class="action-title">Export My Data</div>
+              <div class="action-copy">Download only your own customers, products, sales, expenses, and suppliers as a ZIP of CSV files.</div>
+              <div class="action-buttons">
+                <button class="btn" type="button" onclick="exportMyData()">Export My Data</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function toast(msg, type = 'suc', dur = 3200) {
+  const tc = $('toast-container');
+  const icons = { suc: 'OK', err: 'ERR', inf: 'INFO' };
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${icons[type] || 'INFO'}</span><span>${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">x</button>`;
+  tc.appendChild(t);
+  setTimeout(() => {
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 320);
+  }, dur);
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+}
+
+function setAlert(targetId, kind, message) {
+  const successEl = $('passwordSuccess');
+  const errorEl = $('passwordError');
+  const actionSuccessEl = $('actionSuccess');
+  const actionErrorEl = $('actionError');
+  [successEl, errorEl, actionSuccessEl, actionErrorEl].forEach(el => {
+    el.className = el.className.replace(' show', '');
+    el.textContent = '';
+  });
+  const el = $(targetId);
+  el.textContent = message;
+  el.className = `alert ${kind} show`;
+}
+
+async function handleJsonResponse(response) {
+  if (response.redirected) {
+    window.location.href = response.url;
+    return null;
+  }
+  return response.json();
+}
+
+$('passwordForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = new FormData(event.target);
+  const response = await fetch('/change-password', { method: 'POST', body: form });
+  const data = await handleJsonResponse(response);
+  if (!data) return;
+
+  if (response.ok && data.success) {
+    setAlert('passwordSuccess', 'success', data.message || 'Password updated successfully');
+    toast(data.message || 'Password updated successfully', 'suc');
+    event.target.reset();
+  } else {
+    setAlert('passwordError', 'error', data.error || 'Unable to change password');
+    toast(data.error || 'Unable to change password', 'err');
+  }
+});
+
+async function deleteMyData() {
+  if (!confirm('Delete only your current account data from VyapaarIQ?')) return;
+  const response = await fetch('/delete-my-data', { method: 'POST' });
+  const data = await handleJsonResponse(response);
+  if (!data) return;
+
+  if (response.ok && data.success) {
+    setAlert('actionSuccess', 'success', data.message || 'Data deleted successfully');
+    toast(data.message || 'Data deleted successfully', 'suc');
+  } else {
+    setAlert('actionError', 'error', data.error || 'Unable to delete your data');
+    toast(data.error || 'Unable to delete your data', 'err');
+  }
+}
+
+async function exportMyData() {
+  const response = await fetch('/export-my-data');
+  if (response.redirected) {
+    window.location.href = response.url;
+    return;
+  }
+  if (!response.ok) {
+    setAlert('actionError', 'error', 'Export failed');
+    toast('Export failed', 'err');
+    return;
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+  const filename = match ? match[1] : 'vyapaariq_export.zip';
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+
+  setAlert('actionSuccess', 'success', 'Export completed successfully');
+  toast('Export completed successfully', 'suc');
+}
+
+document.addEventListener('click', event => {
+  document.querySelectorAll('.profile-menu').forEach(menu => {
+    if (!menu.contains(event.target)) menu.removeAttribute('open');
+  });
+});
+</script>
+</body>
+</html>

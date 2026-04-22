@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VyapaarIQ — Data Import Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#060c18;--bg2:#080f1e;--sur:#0d1528;--card:#0d1628;--card2:#111c34;--card3:#0a1220;
+  --bd:rgba(0,212,255,.10);--bd2:rgba(91,140,255,.13);--bds:rgba(0,212,255,.25);
+  --tx:#e8f0ff;--tx2:#a0b4d0;--mu:#4a637a;--mu2:#3a5268;
+  --cyan:#00d4ff;--blue:#5b8cff;--vio:#8a7cff;
+  --green:#22d87a;--amber:#f59e0b;--red:#ef4444;--pink:#f472b6;
+  --glow:rgba(0,212,255,.15);--glowb:rgba(91,140,255,.18);
+  --g1:linear-gradient(135deg,#00d4ff,#5b8cff);
+  --g2:linear-gradient(135deg,#5b8cff,#8a7cff);
+  --g3:linear-gradient(135deg,#00d4ff,#8a7cff);
+  --g-green:linear-gradient(135deg,#22d87a,#00d4ff);
+  --g-amber:linear-gradient(135deg,#f59e0b,#ef4444);
+  --f:'Plus Jakarta Sans',sans-serif;--fd:'Syne',sans-serif;--fm:'DM Mono',monospace;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --r:12px;--ri:10px;--top:56px;
+}
+[data-theme="light"]{
+  --bg:#f0f4ff;--bg2:#e8efff;--sur:#fff;--card:#f8faff;--card2:#eef2ff;--card3:#f4f7ff;
+  --tx:#0a0e1a;--tx2:#2c3e6a;--mu:#7a90b0;--mu2:#9aadc8;
+  --bd:rgba(0,100,200,.10);--bd2:rgba(91,140,255,.14);--bds:rgba(0,100,200,.28);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%}
+body{min-height:100%;background:var(--bg);color:var(--tx);font-family:var(--f);transition:background .3s,color .3s}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--cyan);border-radius:3px}
+::selection{background:rgba(0,212,255,.22);color:var(--cyan)}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(0,212,255,.013) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.013) 1px,transparent 1px);
+  background-size:48px 48px}
+[data-theme="light"] body::before{opacity:.4}
+
+/* TOPBAR */
+.topbar{position:sticky;top:0;height:var(--top);background:rgba(6,12,24,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 32px}
+[data-theme="light"] .topbar{background:rgba(240,244,255,.92)}
+.topbar-left{display:flex;align-items:center;gap:14px}
+.tb-logo{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-size:16px;font-weight:800;text-decoration:none}
+.logo-icon{width:28px;height:28px;border-radius:7px;background:var(--g1);display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 12px var(--glow)}
+.logo-text{background:var(--g1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo-iq{background:var(--g2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tb-divider{width:1px;height:20px;background:var(--bd)}
+.page-title{font-family:var(--fd);font-size:14px;font-weight:800;letter-spacing:-.3px;color:var(--cyan)}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.top-btn{display:inline-flex;align-items:center;gap:7px;padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;font-family:var(--fm);border:1px solid var(--bd);color:var(--tx2);background:transparent;cursor:pointer;transition:all .22s;letter-spacing:.2px;text-decoration:none}
+.top-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.06)}
+.top-btn.primary{background:var(--g1);color:#000;border-color:transparent;font-weight:700}
+.top-btn.primary:hover{box-shadow:0 4px 20px var(--glow);transform:translateY(-1px)}
+.tog{width:38px;height:20px;border-radius:10px;background:var(--sur);border:1px solid var(--bd);cursor:pointer;display:flex;align-items:center;padding:2px}
+.tok{width:14px;height:14px;border-radius:50%;background:var(--g1);font-size:8px;display:flex;align-items:center;justify-content:center;transition:transform .3s var(--ease)}
+[data-theme="light"] .tok{transform:translateX(18px)}
+
+/* PAGE */
+.page{position:relative;z-index:1;padding:36px 32px 80px;max-width:1200px;margin:0 auto}
+
+/* PAGE HERO */
+.page-hero{margin-bottom:36px;padding-bottom:28px;border-bottom:1px solid var(--bd)}
+.hero-tag{font-size:9.5px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--cyan);font-family:var(--fm);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.hero-tag::before{content:'';width:16px;height:1.5px;background:var(--cyan);border-radius:2px;opacity:.6}
+.hero-title{font-family:var(--fd);font-size:28px;font-weight:800;letter-spacing:-1px;line-height:1.15;margin-bottom:6px}
+.hero-sub{font-size:13.5px;color:var(--tx2);line-height:1.6}
+.hero-flex{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.hero-actions{display:flex;align-items:center;gap:10px}
+
+/* GRID */
+.import-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+.import-grid-full{display:grid;grid-template-columns:1fr;gap:20px}
+
+/* CARD */
+.card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;transition:border-color .2s;margin-bottom:20px}
+.card:last-child{margin-bottom:0}
+.card-head{padding:18px 22px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:0}
+.card-title{font-family:var(--fd);font-size:14px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+.card-title-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.card-body{padding:20px 22px 22px}
+.card-badge{font-size:9px;font-weight:700;padding:3px 8px;border-radius:50px;font-family:var(--fm);background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.18)}
+
+/* DRAG DROP ZONE */
+.drop-zone{
+  border:2px dashed rgba(0,212,255,.25);border-radius:14px;
+  padding:48px 32px;text-align:center;cursor:pointer;
+  transition:all .3s var(--ease);position:relative;
+  background:rgba(0,212,255,.02);
+}
+.drop-zone:hover,.drop-zone.drag-over{
+  border-color:var(--cyan);background:rgba(0,212,255,.05);
+  box-shadow:0 0 0 4px rgba(0,212,255,.05),inset 0 0 20px rgba(0,212,255,.04);
+}
+.drop-zone.has-file{border-color:rgba(34,216,122,.4);background:rgba(34,216,122,.04)}
+.drop-zone.has-file:hover{border-color:var(--green);background:rgba(34,216,122,.07)}
+.drop-icon{font-size:44px;margin-bottom:14px;display:block;transition:transform .3s}
+.drop-zone:hover .drop-icon{transform:scale(1.08) translateY(-3px)}
+.drop-title{font-family:var(--fd);font-size:17px;font-weight:800;margin-bottom:6px;color:var(--tx)}
+.drop-sub{font-size:12.5px;color:var(--mu);font-family:var(--fm);line-height:1.6}
+.drop-chips{display:flex;justify-content:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+.drop-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:50px;font-size:10px;font-weight:700;font-family:var(--fm);border:1px solid}
+.chip-xlsx{background:rgba(34,216,122,.08);color:var(--green);border-color:rgba(34,216,122,.2)}
+.chip-csv{background:rgba(91,140,255,.08);color:var(--blue);border-color:rgba(91,140,255,.2)}
+.chip-xls{background:rgba(34,216,122,.06);color:var(--green);border-color:rgba(34,216,122,.15)}
+.file-input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+
+/* FILE INFO */
+.file-info{display:none;align-items:center;gap:14px;margin-top:16px;padding:14px 16px;background:rgba(34,216,122,.04);border:1px solid rgba(34,216,122,.15);border-radius:10px}
+.file-info.show{display:flex}
+.fi-icon{font-size:22px;flex-shrink:0}
+.fi-name{font-size:13px;font-weight:700;color:var(--tx);font-family:var(--fm)}
+.fi-meta{font-size:11px;color:var(--mu);font-family:var(--fm);margin-top:2px}
+.fi-remove{margin-left:auto;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--red);width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;transition:all .2s;flex-shrink:0}
+.fi-remove:hover{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.4)}
+
+/* ── NEW: SHEET SELECTOR SECTION ── */
+.sheet-selector-wrap{
+  margin-top:16px;
+  padding:14px 16px;
+  background:rgba(91,140,255,.04);
+  border:1px solid rgba(91,140,255,.18);
+  border-radius:10px;
+  transition:all .25s var(--ease);
+}
+.sheet-selector-wrap.detecting{
+  border-color:rgba(0,212,255,.35);
+  background:rgba(0,212,255,.04);
+  box-shadow:0 0 0 3px rgba(0,212,255,.05);
+}
+.sheet-selector-wrap.ready{
+  border-color:rgba(34,216,122,.25);
+  background:rgba(34,216,122,.03);
+}
+.sheet-selector-label{
+  font-size:10.5px;font-weight:700;color:var(--tx2);
+  letter-spacing:.5px;font-family:var(--fm);
+  margin-bottom:8px;
+  display:flex;align-items:center;gap:7px;
+}
+.sheet-selector-label .detect-spinner{
+  display:none;width:11px;height:11px;border:1.5px solid rgba(0,212,255,.2);
+  border-top-color:var(--cyan);border-radius:50%;animation:spin .6s linear infinite;
+}
+.sheet-selector-label .detect-spinner.show{display:inline-block}
+.sheet-count-badge{
+  margin-left:auto;font-size:9px;font-weight:700;
+  padding:2px 7px;border-radius:50px;
+  font-family:var(--fm);
+  background:rgba(91,140,255,.12);color:var(--blue);
+  border:1px solid rgba(91,140,255,.2);
+}
+.sheet-count-badge.has-sheets{
+  background:rgba(34,216,122,.1);color:var(--green);
+  border-color:rgba(34,216,122,.2);
+}
+/* sheet chips row */
+.sheet-chips-row{
+  display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;
+  min-height:28px;
+  padding:4px 0;
+}
+.sheet-chip-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 11px;border-radius:50px;
+  font-size:10.5px;font-weight:700;font-family:var(--fm);
+  border:1px solid rgba(91,140,255,.22);
+  background:rgba(91,140,255,.07);color:var(--blue);
+  cursor:pointer;transition:all .18s var(--ease);
+}
+.sheet-chip-btn:hover{
+  border-color:var(--cyan);color:var(--cyan);
+  background:rgba(0,212,255,.08);
+}
+.sheet-chip-btn.active{
+  background:var(--g1);color:#000;border-color:transparent;
+  box-shadow:0 0 10px rgba(0,212,255,.2);
+}
+.sheet-chip-btn .sheet-chip-icon{font-size:9px;opacity:.75}
+/* fallback select dropdown */
+select#sheetSelector{
+  width:100%;padding:10px 13px;
+  background:rgba(255,255,255,.03);
+  border:1.5px solid var(--bd);
+  border-radius:var(--ri);color:var(--tx);
+  font-size:13px;font-family:var(--fm);
+  outline:none;transition:all .22s;
+  appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a637a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;
+  padding-right:34px;cursor:pointer;
+}
+select#sheetSelector:hover{border-color:rgba(0,212,255,.18)}
+select#sheetSelector:focus{border-color:var(--cyan);background:rgba(0,212,255,.04);box-shadow:0 0 0 3px rgba(0,212,255,.07)}
+select#sheetSelector option{background:var(--card);color:var(--tx)}
+select#sheetSelector:disabled{opacity:.45;cursor:not-allowed}
+.sheet-hint{
+  font-size:10.5px;color:var(--mu);font-family:var(--fm);
+  margin-top:6px;display:flex;align-items:center;gap:5px;
+}
+.sheet-hint.ok{color:rgba(34,216,122,.7)}
+.sheet-hint.err{color:rgba(239,68,68,.7)}
+
+/* FORM ELEMENTS */
+.form-group{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.form-group:last-child{margin-bottom:0}
+.fg-label{font-size:11.5px;font-weight:700;color:var(--tx2);letter-spacing:.3px;font-family:var(--fm);display:flex;align-items:center;gap:6px}
+.fg-label .req{color:var(--red);font-size:10px}
+.fg-hint{font-size:10.5px;color:var(--mu);font-family:var(--fm);margin-top:3px}
+.inp,select.inp{width:100%;padding:10px 13px;background:rgba(255,255,255,.03);border:1.5px solid var(--bd);border-radius:var(--ri);color:var(--tx);font-size:13px;font-family:var(--f);outline:none;transition:all .22s;appearance:none;-webkit-appearance:none}
+.inp::placeholder{color:var(--mu);font-size:12.5px}
+.inp:hover{border-color:rgba(0,212,255,.18)}
+.inp:focus{border-color:var(--cyan);background:rgba(0,212,255,.04);box-shadow:0 0 0 3px rgba(0,212,255,.07)}
+select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234a637a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer}
+select.inp option{background:var(--card);color:var(--tx)}
+
+/* DATASET TYPE GRID — EXPANDED to 4 cols to fit 10 datasets */
+.ds-type-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ds-type-btn{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:12px 8px;border-radius:10px;cursor:pointer;
+  border:1.5px solid var(--bd);background:transparent;color:var(--tx2);
+  font-size:11px;font-weight:600;font-family:var(--fm);
+  transition:all .22s var(--ease);text-align:center;
+}
+.ds-type-btn:hover{border-color:rgba(0,212,255,.2);color:var(--tx);background:rgba(0,212,255,.04)}
+.ds-type-btn.selected{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.08);box-shadow:0 0 0 3px rgba(0,212,255,.06)}
+/* NEW: category tinting for new dataset types */
+.ds-type-btn.type-new{border-color:rgba(138,124,255,.18);background:rgba(138,124,255,.03)}
+.ds-type-btn.type-new:hover{border-color:rgba(138,124,255,.35);color:var(--vio);background:rgba(138,124,255,.07)}
+.ds-type-btn.type-new.selected{border-color:var(--vio);color:var(--vio);background:rgba(138,124,255,.1);box-shadow:0 0 0 3px rgba(138,124,255,.07)}
+.ds-type-icon{font-size:20px}
+.ds-type-label{font-size:10px;line-height:1.3}
+
+/* BUTTONS */
+.btn-sub{display:inline-flex;align-items:center;gap:8px;padding:11px 26px;border-radius:var(--ri);font-size:13.5px;font-weight:700;font-family:var(--f);background:var(--g1);color:#000;border:none;cursor:pointer;position:relative;overflow:hidden;transition:all .3s var(--ease);box-shadow:0 3px 18px rgba(0,212,255,.18);letter-spacing:.2px}
+.btn-sub::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.22),transparent);pointer-events:none}
+.btn-sub:hover{transform:translateY(-2px);box-shadow:0 7px 28px rgba(0,212,255,.28)}
+.btn-sub:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-outline{display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border-radius:var(--ri);font-size:13px;font-weight:600;font-family:var(--fm);background:transparent;color:var(--tx2);border:1px solid var(--bd);cursor:pointer;transition:all .22s;letter-spacing:.2px}
+.btn-outline:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.05)}
+.btn-danger{display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border-radius:var(--ri);font-size:13px;font-weight:600;font-family:var(--fm);background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.25);cursor:pointer;transition:all .22s}
+.btn-danger:hover{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.4)}
+.btn-row{display:flex;align-items:center;gap:10px;margin-top:20px;flex-wrap:wrap}
+.btn-preview{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;font-family:var(--fm);background:rgba(91,140,255,.08);border:1px solid rgba(91,140,255,.2);color:var(--vio);cursor:pointer;transition:all .22s}
+.btn-preview:hover{background:rgba(91,140,255,.15);border-color:var(--vio)}
+
+/* PROGRESS BAR */
+.progress-wrap{display:none;margin-top:16px}
+.progress-wrap.show{display:block}
+.progress-label{display:flex;justify-content:space-between;margin-bottom:6px;font-size:11px;font-family:var(--fm);color:var(--tx2)}
+.progress-track{height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;background:var(--g1);width:0%;transition:width .4s var(--ease)}
+
+/* PREVIEW TABLE */
+.preview-container{overflow-x:auto;border-radius:8px}
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table thead{background:rgba(0,212,255,.05);border-bottom:1px solid var(--bd)}
+.data-table th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;font-family:var(--fm);white-space:nowrap}
+.data-table td{padding:9px 14px;border-bottom:1px solid var(--bd);color:var(--tx2);font-family:var(--fm);white-space:nowrap;font-size:11.5px}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover td{background:rgba(0,212,255,.025);color:var(--tx)}
+.table-empty{padding:40px;text-align:center;color:var(--mu);font-family:var(--fm);font-size:12px}
+.table-empty-icon{font-size:28px;margin-bottom:10px;opacity:.5}
+
+/* STATUS PANEL */
+.status-panel{display:none;margin-top:0}
+.status-panel.show{display:block}
+.status-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.status-card{padding:16px;border-radius:10px;border:1px solid;text-align:center}
+.sc-inserted{background:rgba(34,216,122,.06);border-color:rgba(34,216,122,.2)}
+.sc-skipped{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.2)}
+.sc-detected{background:rgba(0,212,255,.06);border-color:rgba(0,212,255,.2)}
+.sc-num{font-size:28px;font-weight:800;font-family:var(--fd);letter-spacing:-1px;margin-bottom:4px}
+.sc-inserted .sc-num{color:var(--green)}
+.sc-skipped .sc-num{color:var(--red)}
+.sc-detected .sc-num{color:var(--cyan)}
+.sc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--fm);color:var(--mu)}
+.sc-inserted .sc-label{color:rgba(34,216,122,.6)}
+.sc-skipped .sc-label{color:rgba(239,68,68,.6)}
+.sc-detected .sc-label{color:rgba(0,212,255,.6)}
+
+/* LOGS */
+.log-wrap{background:var(--card3);border:1px solid var(--bd);border-radius:10px;padding:14px 16px;font-family:var(--fm);font-size:11.5px;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.log-entry{display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.log-time{color:var(--mu);flex-shrink:0;font-size:10px;margin-top:2px}
+.log-msg.ok{color:var(--green)}.log-msg.err{color:var(--red)}.log-msg.inf{color:var(--cyan)}.log-msg.warn{color:var(--amber)}
+
+/* INLINE SPINNER */
+.inline-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,212,255,.2);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TOAST */
+#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:11px;font-size:13px;font-weight:600;font-family:var(--fm);pointer-events:auto;min-width:240px;max-width:360px;animation:toastIn .35s var(--ease);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.toast.suc{background:rgba(34,216,122,.12);border:1px solid rgba(34,216,122,.28);color:var(--green)}
+.toast.err{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.28);color:#f87171}
+.toast.inf{background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.22);color:var(--cyan)}
+.toast.out{animation:toastOut .35s var(--ease) forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateX(24px)}}
+.toast-close{margin-left:auto;background:none;border:none;color:inherit;cursor:pointer;opacity:.6;font-size:14px;padding:0 0 0 8px}
+
+/* STEP INDICATOR */
+.steps{display:flex;align-items:center;gap:0;margin-bottom:36px}
+.step{display:flex;align-items:center;gap:0;flex:1}
+.step-circle{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;font-family:var(--fm);border:2px solid var(--bd);background:var(--card);color:var(--mu);flex-shrink:0;transition:all .3s}
+.step-label{font-size:10px;font-weight:700;color:var(--mu);font-family:var(--fm);letter-spacing:.5px;margin-left:8px;white-space:nowrap}
+.step-line{flex:1;height:2px;background:var(--bd);transition:background .3s}
+.step.done .step-circle{background:var(--g-green);color:#000;border-color:transparent;box-shadow:0 0 12px rgba(34,216,122,.3)}
+.step.done .step-label{color:var(--green)}
+.step.done .step-line{background:rgba(34,216,122,.3)}
+.step.active .step-circle{background:var(--g1);color:#000;border-color:transparent;box-shadow:0 0 12px var(--glow)}
+.step.active .step-label{color:var(--cyan)}
+.step:last-child .step-line{display:none}
+
+/* SECTION TITLES */
+.sec-tag{font-size:9.5px;letter-spacing:3px;text-transform:uppercase;font-weight:700;color:var(--cyan);font-family:var(--fm);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.sec-tag::before{content:'';width:14px;height:1.5px;background:var(--cyan);border-radius:2px;opacity:.6}
+.sec-title{font-family:var(--fd);font-size:18px;font-weight:800;letter-spacing:-.5px}
+.sec-sub{font-size:12.5px;color:var(--tx2);margin-top:4px;line-height:1.5}
+.sec-head{margin-bottom:18px}
+
+/* CONFIRM SUMMARY — sheet row */
+.confirm-sheet-row{
+  padding:14px;background:rgba(138,124,255,.04);
+  border:1px solid rgba(138,124,255,.14);border-radius:10px;
+}
+
+/* RESPONSIVE */
+@media(max-width:1050px){.ds-type-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){.import-grid{grid-template-columns:1fr}.ds-type-grid{grid-template-columns:repeat(3,1fr)}.status-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.page{padding:20px 16px 60px}.topbar{padding:0 16px}.hero-flex{flex-direction:column;align-items:flex-start}.steps{overflow-x:auto;padding-bottom:4px}.ds-type-grid{grid-template-columns:repeat(2,1fr)}.status-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <a class="tb-logo" href="/dashboard">
+      <div class="logo-icon">📊</div>
+      <span><span class="logo-text">Vyapaar</span><span class="logo-iq">IQ</span></span>
+    </a>
+    <div class="tb-divider"></div>
+    <span class="page-title">Import Center</span>
+  </div>
+  <div class="topbar-right">
+    <a class="top-btn" href="/analytics">📊 Analytics</a>
+    <button class="tog" onclick="toggleTheme()" title="Toggle theme"><div class="tok" id="knob">🌙</div></button>
+    <a class="top-btn primary" href="/dashboard">← Dashboard</a>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- PAGE HERO -->
+  <div class="page-hero">
+    <div class="hero-flex">
+      <div>
+        <div class="hero-tag">⬆️ Data Operations</div>
+        <h1 class="hero-title">Data Import Center</h1>
+        <p class="hero-sub">Upload Excel or CSV datasets to populate your VyapaarIQ database in seconds.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="top-btn" href="/analytics">📊 Analytics</a>
+        <a class="top-btn" href="/dashboard">← Back to Dashboard</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP INDICATOR -->
+  <div class="steps" id="stepIndicator">
+    <div class="step active" id="step-1"><div class="step-circle">1</div><span class="step-label">UPLOAD FILE</span><div class="step-line"></div></div>
+    <div class="step" id="step-2"><div class="step-circle">2</div><span class="step-label">SELECT SHEET</span><div class="step-line"></div></div>
+    <div class="step" id="step-3"><div class="step-circle">3</div><span class="step-label">SELECT TYPE</span><div class="step-line"></div></div>
+    <div class="step" id="step-4"><div class="step-circle">4</div><span class="step-label">PREVIEW</span><div class="step-line"></div></div>
+    <div class="step" id="step-5"><div class="step-circle">5</div><span class="step-label">IMPORT</span><div class="step-line"></div></div>
+    <div class="step" id="step-6"><div class="step-circle">6</div><span class="step-label">STATUS</span></div>
+  </div>
+
+  <!-- ROW 1: UPLOAD + DATASET TYPE -->
+  <div class="import-grid">
+
+    <!-- SECTION 1: UPLOAD -->
+    <div>
+      <div class="sec-head">
+        <div class="sec-tag">📁 Step 1</div>
+        <h2 class="sec-title">Upload Dataset</h2>
+        <p class="sec-sub">Drag & drop or click to select your file.</p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title"><div class="card-title-icon" style="background:rgba(0,212,255,.1)">📁</div>File Upload</div>
+          <span class="card-badge" id="fileTypeBadge">No file selected</span>
+        </div>
+        <div class="card-body">
+          <div class="drop-zone" id="dropZone" onclick="triggerFileInput()">
+            <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls,.csv" onchange="handleFileChange(event)"/>
+            <span class="drop-icon" id="dropIcon">☁️</span>
+            <div class="drop-title" id="dropTitle">Drop your file here</div>
+            <div class="drop-sub" id="dropSub">or click to browse from your computer</div>
+            <div class="drop-chips">
+              <span class="drop-chip chip-xlsx">📊 .xlsx</span>
+              <span class="drop-chip chip-csv">📋 .csv</span>
+              <span class="drop-chip chip-xls">📗 .xls</span>
+            </div>
+          </div>
+          <div class="file-info" id="fileInfo">
+            <span class="fi-icon" id="fi-icon">📊</span>
+            <div>
+              <div class="fi-name" id="fi-name">filename.xlsx</div>
+              <div class="fi-meta" id="fi-meta">Size · Last modified</div>
+            </div>
+            <button class="fi-remove" onclick="clearFile()" title="Remove file">✕</button>
+          </div>
+
+          <!-- ── NEW: SHEET SELECTOR SECTION ── -->
+          <div class="sheet-selector-wrap" id="sheetSelectorWrap">
+            <div class="sheet-selector-label">
+              <span>📋 SELECT EXCEL SHEET</span>
+              <span class="detect-spinner" id="detectSpinner"></span>
+              <span class="sheet-count-badge" id="sheetCountBadge">Upload file first</span>
+            </div>
+            <!-- Sheet chips (populated after detection) -->
+            <div class="sheet-chips-row" id="sheetChipsRow" style="display:none"></div>
+            <!-- Fallback select dropdown (always present, synced with chips) -->
+            <select id="sheetSelector" disabled onchange="onSheetDropdownChange(this.value)">
+              <option value="">— Upload file first —</option>
+            </select>
+            <div class="sheet-hint" id="sheetHint">Upload an Excel file to auto-detect sheets.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: DATASET TYPE -->
+    <div>
+      <div class="sec-head">
+        <div class="sec-tag">🗂️ Step 3</div>
+        <h2 class="sec-title">Select Dataset Type</h2>
+        <p class="sec-sub">Tell VyapaarIQ how to interpret your data columns.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(91,140,255,.1)">🗂️</div>Dataset Type</div></div>
+        <div class="card-body">
+          <!-- EXPANDED dataset grid: 10 datasets -->
+          <div class="ds-type-grid" id="dsTypeGrid">
+            <!-- Existing datasets -->
+            <button class="ds-type-btn" data-type="sales" onclick="selectDataset('sales')"><span class="ds-type-icon">💰</span><span class="ds-type-label">Sales Data</span></button>
+            <button class="ds-type-btn" data-type="products" onclick="selectDataset('products')"><span class="ds-type-icon">📦</span><span class="ds-type-label">Products</span></button>
+            <button class="ds-type-btn" data-type="customers" onclick="selectDataset('customers')"><span class="ds-type-icon">👥</span><span class="ds-type-label">Customers</span></button>
+            <button class="ds-type-btn" data-type="expenses" onclick="selectDataset('expenses')"><span class="ds-type-icon">📋</span><span class="ds-type-label">Expenses</span></button>
+            <button class="ds-type-btn" data-type="suppliers" onclick="selectDataset('suppliers')"><span class="ds-type-icon">🤝</span><span class="ds-type-label">Suppliers</span></button>
+            <button class="ds-type-btn" data-type="purchases" onclick="selectDataset('purchases')"><span class="ds-type-icon">🛒</span><span class="ds-type-label">Purchases</span></button>
+            <!-- NEW datasets -->
+            <button class="ds-type-btn type-new" data-type="categories" onclick="selectDataset('categories')"><span class="ds-type-icon">🏷️</span><span class="ds-type-label">Categories</span></button>
+            <button class="ds-type-btn type-new" data-type="sale_items" onclick="selectDataset('sale_items')"><span class="ds-type-icon">🧾</span><span class="ds-type-label">Sale Items</span></button>
+            <button class="ds-type-btn type-new" data-type="purchase_items" onclick="selectDataset('purchase_items')"><span class="ds-type-icon">📥</span><span class="ds-type-label">Purchase Items</span></button>
+            <button class="ds-type-btn type-new" data-type="stock_alerts" onclick="selectDataset('stock_alerts')"><span class="ds-type-icon">🔔</span><span class="ds-type-label">Stock Alerts</span></button>
+          </div>
+          <div style="margin-top:16px;padding:12px 14px;background:rgba(0,212,255,.03);border:1px solid var(--bd);border-radius:9px">
+            <div style="font-size:10.5px;color:var(--mu);font-family:var(--fm);margin-bottom:4px;letter-spacing:.5px">SELECTED TYPE</div>
+            <div id="selectedTypeDisplay" style="font-size:14px;font-weight:700;color:var(--tx2);font-family:var(--fm)">None selected — please choose a dataset type above</div>
+          </div>
+          <div style="margin-top:14px">
+            <div style="font-size:10.5px;color:var(--mu);font-family:var(--fm);margin-bottom:8px;letter-spacing:.5px">EXPECTED COLUMNS</div>
+            <div id="expectedCols" style="font-size:11px;color:var(--tx2);font-family:var(--fm);line-height:1.8">Select a type to see required column names.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: PREVIEW -->
+  <div class="sec-head">
+    <div class="sec-tag">👁️ Step 4</div>
+    <h2 class="sec-title">Preview Dataset</h2>
+    <p class="sec-sub">First 10 rows of your uploaded file — verify before importing.</p>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title"><div class="card-title-icon" style="background:rgba(138,124,255,.1)">👁️</div>Data Preview</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;color:var(--mu);font-family:var(--fm)" id="previewMeta">Upload a file to see preview</span>
+        <button class="btn-preview" onclick="loadPreview()" id="previewBtn">👁️ Load Preview</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding-top:12px">
+      <div class="preview-container">
+        <table class="data-table" id="previewTable">
+          <thead id="previewThead"><tr><th colspan="5" style="text-align:center;opacity:.5">Upload a file and click "Load Preview"</th></tr></thead>
+          <tbody id="previewTbody">
+            <tr><td colspan="5"><div class="table-empty"><div class="table-empty-icon">📊</div>No preview available yet</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="progress-wrap" id="previewProgress">
+        <div class="progress-label"><span>Generating preview…</span><span id="previewPct">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="previewFill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: IMPORT BUTTON -->
+  <div class="sec-head">
+    <div class="sec-tag">🚀 Step 5</div>
+    <h2 class="sec-title">Import Dataset</h2>
+    <p class="sec-sub">Confirm and send your data to VyapaarIQ database.</p>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(34,216,122,.1)">🚀</div>Confirm Import</div></div>
+    <div class="card-body">
+      <!-- Confirm summary: 3 items now (file + sheet + type) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px">
+        <div style="padding:14px;background:rgba(0,212,255,.03);border:1px solid var(--bd);border-radius:10px">
+          <div style="font-size:10px;color:var(--mu);font-family:var(--fm);letter-spacing:1px;margin-bottom:6px">SELECTED FILE</div>
+          <div id="confirmFile" style="font-size:13px;font-weight:700;color:var(--tx);font-family:var(--fm)">No file selected</div>
+        </div>
+        <div class="confirm-sheet-row">
+          <div style="font-size:10px;color:var(--mu);font-family:var(--fm);letter-spacing:1px;margin-bottom:6px">SELECTED SHEET</div>
+          <div id="confirmSheet" style="font-size:13px;font-weight:700;color:var(--vio);font-family:var(--fm)">Not selected</div>
+        </div>
+        <div style="padding:14px;background:rgba(91,140,255,.03);border:1px solid rgba(91,140,255,.12);border-radius:10px">
+          <div style="font-size:10px;color:var(--mu);font-family:var(--fm);letter-spacing:1px;margin-bottom:6px">DATASET TYPE</div>
+          <div id="confirmType" style="font-size:13px;font-weight:700;color:var(--vio);font-family:var(--fm)">Not selected</div>
+        </div>
+      </div>
+      <div style="padding:12px 16px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.15);border-radius:9px;margin-bottom:20px">
+        <div style="font-size:12px;color:var(--amber);font-family:var(--fm);display:flex;align-items:flex-start;gap:8px">
+          <span>⚠️</span>
+          <span>Importing will add new records to your database. Duplicate detection is applied based on unique identifiers. Existing records will not be overwritten.</span>
+        </div>
+      </div>
+      <div class="progress-wrap" id="importProgress">
+        <div class="progress-label"><span id="importProgressLabel">Uploading…</span><span id="importPct">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="importFill" style="background:var(--g-green)"></div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-sub" onclick="importSelectedSheet()" id="importBtn" disabled>🚀 Import Dataset</button>
+        <button class="btn-outline" onclick="clearAll()">✕ Clear All</button>
+        <button class="btn-danger" onclick="if(confirm('Reset all import state?')) clearAll()">🗑️ Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 5: UPLOAD STATUS -->
+  <div class="status-panel" id="statusPanel">
+    <div class="sec-head">
+      <div class="sec-tag">✅ Step 6</div>
+      <h2 class="sec-title">Upload Status</h2>
+      <p class="sec-sub">Results from your last import operation.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(34,216,122,.1)">✅</div>Import Results</div></div>
+      <div class="card-body">
+        <div class="status-grid" style="margin-bottom:20px">
+          <div class="status-card sc-inserted">
+            <div class="sc-num" id="stat-inserted">0</div>
+            <div class="sc-label">Rows Inserted</div>
+          </div>
+          <div class="status-card sc-skipped">
+            <div class="sc-num" id="stat-skipped">0</div>
+            <div class="sc-label">Errors Skipped</div>
+          </div>
+          <div class="status-card sc-detected">
+            <div class="sc-num" id="stat-type">—</div>
+            <div class="sc-label">Dataset Type</div>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;font-size:10px;color:var(--mu);font-family:var(--fm);letter-spacing:1px">IMPORT LOG</div>
+        <div class="log-wrap" id="importLog">
+          <div class="log-entry"><span class="log-time">--:--</span><span class="log-msg inf">Ready. No import run yet.</span></div>
+        </div>
+        <div class="btn-row">
+          <a class="btn-sub" href="/analytics" style="background:var(--g2);color:#fff">📊 View Analytics</a>
+          <button class="btn-outline" onclick="clearAll()">⬆️ Import Another</button>
+          <a class="top-btn" href="/dashboard" style="display:inline-flex;align-items:center;gap:6px;padding:11px 20px;border-radius:10px;font-size:13px;font-weight:600;font-family:var(--fm);border:1px solid var(--bd);color:var(--tx2);background:transparent;text-decoration:none">← Dashboard</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+let selectedFile = null;
+let selectedType = null;      // dataset type key (e.g. "products")
+let selectedSheet = null;     // sheet name (e.g. "Sheet1")
+let detectedSheets = [];      // array of sheet names from backend
+
+function toast(msg, type='suc', dur=3500){
+  const tc=$('toast-container'), icons={suc:'✅',err:'❌',inf:'📡'};
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;
+  t.innerHTML=`<span>${icons[type]||'ℹ'}</span><span>${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+  tc.appendChild(t);
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),400); }, dur);
+}
+
+function toggleTheme(){
+  const h=document.documentElement, k=$('knob');
+  h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';
+  k.textContent=h.dataset.theme==='dark'?'🌙':'☀️';
+}
+
+function setStep(n){
+  for(let i=1;i<=6;i++){
+    const s=$(`step-${i}`);
+    if(!s) continue;
+    s.classList.remove('active','done');
+    if(i<n) s.classList.add('done');
+    else if(i===n) s.classList.add('active');
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   FILE HANDLING
+═══════════════════════════════════════════════ */
+function triggerFileInput(){ $('fileInput').click(); }
+
+function handleFileChange(e){
+  const file = e.target.files[0];
+  if(file) setFile(file);
+}
+
+const dz = $('dropZone');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', ()=>{ dz.classList.remove('drag-over'); });
+dz.addEventListener('drop', e=>{
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if(file){
+    const ext = file.name.split('.').pop().toLowerCase();
+    if(['xlsx','xls','csv'].includes(ext)) setFile(file);
+    else toast('Only .xlsx, .xls or .csv files are supported','err');
+  }
+});
+
+function setFile(file){
+  selectedFile = file;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const isExcel = ['xlsx','xls'].includes(ext);
+  $('dropZone').classList.add('has-file');
+  $('dropIcon').textContent = isExcel ? '📊' : '📋';
+  $('dropTitle').textContent = 'File selected — ready to preview';
+  $('dropSub').textContent = file.name;
+  const fi = $('fileInfo'); fi.classList.add('show');
+  $('fi-icon').textContent = isExcel ? '📊' : '📋';
+  $('fi-name').textContent = file.name;
+  $('fi-meta').textContent = formatBytes(file.size)+' · '+new Date(file.lastModified).toLocaleDateString('en-IN');
+  $('fileTypeBadge').textContent = ext.toUpperCase();
+  $('confirmFile').textContent = file.name;
+  addLog('File loaded: '+file.name,'inf');
+  updateImportBtn();
+  setStep(2);
+  toast('File selected: '+file.name,'suc');
+
+  // Trigger sheet detection for Excel files
+  if(isExcel){
+    detectSheets();
+  } else {
+    // CSV — no sheets, set a single default sheet
+    detectedSheets = [];
+    selectedSheet = 'default';
+    populateSheetSelector(['Sheet1 (CSV)']);
+    $('sheetSelector').value = 'Sheet1 (CSV)';
+    selectedSheet = 'Sheet1 (CSV)';
+    $('confirmSheet').textContent = selectedSheet;
+    $('sheetHint').textContent = 'CSV file — single sheet auto-selected.';
+    $('sheetHint').className = 'sheet-hint ok';
+    $('sheetSelectorWrap').classList.add('ready');
+    $('sheetSelectorWrap').classList.remove('detecting');
+    updateImportBtn();
+  }
+}
+
+function clearFile(){
+  selectedFile = null;
+  selectedSheet = null;
+  detectedSheets = [];
+  $('fileInput').value = '';
+  $('dropZone').classList.remove('has-file');
+  $('dropIcon').textContent = '☁️';
+  $('dropTitle').textContent = 'Drop your file here';
+  $('dropSub').textContent = 'or click to browse from your computer';
+  $('fileInfo').classList.remove('show');
+  $('fileTypeBadge').textContent = 'No file selected';
+  $('confirmFile').textContent = 'No file selected';
+  $('confirmSheet').textContent = 'Not selected';
+  resetSheetSelector();
+  updateImportBtn();
+  setStep(1);
+  toast('File removed','inf');
+}
+
+function formatBytes(bytes){
+  if(bytes<1024) return bytes+'B';
+  if(bytes<1048576) return (bytes/1024).toFixed(1)+'KB';
+  return (bytes/1048576).toFixed(1)+'MB';
+}
+
+/* ═══════════════════════════════════════════════
+   SHEET DETECTION  (Step 2)
+   Calls POST /get-excel-sheets
+═══════════════════════════════════════════════ */
+function detectSheets(){
+  if(!selectedFile){ toast('No file to detect sheets from','err'); return; }
+
+  const wrap = $('sheetSelectorWrap');
+  const spinner = $('detectSpinner');
+  const badge = $('sheetCountBadge');
+  const hint = $('sheetHint');
+  const sel = $('sheetSelector');
+
+  // UI: detecting state
+  wrap.classList.add('detecting');
+  wrap.classList.remove('ready');
+  spinner.classList.add('show');
+  badge.textContent = 'Detecting…';
+  badge.className = 'sheet-count-badge';
+  hint.textContent = 'Reading Excel workbook…';
+  hint.className = 'sheet-hint';
+  sel.disabled = true;
+  $('sheetChipsRow').style.display = 'none';
+  $('sheetChipsRow').innerHTML = '';
+  sel.innerHTML = '<option value="">— Detecting sheets… —</option>';
+
+  addLog('Detecting sheets in '+selectedFile.name+'…','inf');
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  fetch('/get-excel-sheets', { method:'POST', body:fd })
+    .then(r => r.json())
+    .then(data => {
+      const sheets = (data.sheets && data.sheets.length > 0) ? data.sheets : null;
+      if(sheets){
+        finishSheetDetection(sheets);
+      } else {
+        fallbackSheetDetection();
+      }
+    })
+    .catch(() => {
+      // Graceful fallback: simulate sheets from filename
+      fallbackSheetDetection();
+    });
+}
+
+function fallbackSheetDetection(){
+  // Demo fallback — generate plausible sheet names from selected dataset type or filename
+  const fallbacks = selectedType
+    ? [selectedType, 'Sheet1', 'Data']
+    : ['Sheet1', 'Sheet2', 'Data'];
+  addLog('Backend offline — simulating sheet detection (demo mode)','warn');
+  finishSheetDetection(fallbacks);
+}
+
+function finishSheetDetection(sheets){
+  detectedSheets = sheets;
+  selectedSheet = sheets[0]; // auto-select first sheet
+
+  const wrap = $('sheetSelectorWrap');
+  const spinner = $('detectSpinner');
+  const badge = $('sheetCountBadge');
+  const hint = $('sheetHint');
+
+  spinner.classList.remove('show');
+  wrap.classList.remove('detecting');
+  wrap.classList.add('ready');
+  badge.textContent = sheets.length+' sheet'+(sheets.length>1?'s':'')+' found';
+  badge.className = 'sheet-count-badge has-sheets';
+  hint.textContent = 'Sheet auto-selected: '+selectedSheet+'. Click a chip to change.';
+  hint.className = 'sheet-hint ok';
+
+  populateSheetSelector(sheets);
+  $('confirmSheet').textContent = selectedSheet;
+  updateImportBtn();
+
+  if(selectedFile) setStep(3);
+  addLog('Detected '+sheets.length+' sheet(s): '+sheets.join(', '),'ok');
+  toast(sheets.length+' sheet(s) detected in workbook','suc');
+}
+
+function populateSheetSelector(sheets){
+  const sel = $('sheetSelector');
+  const chipsRow = $('sheetChipsRow');
+
+  // Populate select dropdown
+  sel.innerHTML = '';
+  sheets.forEach((name, idx) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if(idx === 0) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.disabled = false;
+
+  // Populate chip buttons
+  chipsRow.innerHTML = '';
+  sheets.forEach((name, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'sheet-chip-btn'+(idx===0?' active':'');
+    btn.dataset.sheet = name;
+    btn.innerHTML = `<span class="sheet-chip-icon">📄</span>${name}`;
+    btn.onclick = () => selectSheet(name);
+    chipsRow.appendChild(btn);
+  });
+  chipsRow.style.display = 'flex';
+}
+
+function selectSheet(sheetName){
+  selectedSheet = sheetName;
+  // Update chips
+  document.querySelectorAll('.sheet-chip-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.sheet === sheetName);
+  });
+  // Sync dropdown
+  const sel = $('sheetSelector');
+  for(let i=0; i<sel.options.length; i++){
+    if(sel.options[i].value === sheetName){ sel.selectedIndex = i; break; }
+  }
+  $('confirmSheet').textContent = sheetName;
+  $('sheetHint').textContent = 'Selected: '+sheetName;
+  $('sheetHint').className = 'sheet-hint ok';
+  updateImportBtn();
+  addLog('Sheet selected: '+sheetName,'inf');
+  toast('Sheet selected: '+sheetName,'inf', 2000);
+}
+
+function onSheetDropdownChange(val){
+  if(val) selectSheet(val);
+}
+
+function resetSheetSelector(){
+  detectedSheets = [];
+  selectedSheet = null;
+  const wrap = $('sheetSelectorWrap');
+  const sel = $('sheetSelector');
+  wrap.classList.remove('detecting','ready');
+  $('detectSpinner').classList.remove('show');
+  $('sheetCountBadge').textContent = 'Upload file first';
+  $('sheetCountBadge').className = 'sheet-count-badge';
+  $('sheetHint').textContent = 'Upload an Excel file to auto-detect sheets.';
+  $('sheetHint').className = 'sheet-hint';
+  sel.innerHTML = '<option value="">— Upload file first —</option>';
+  sel.disabled = true;
+  $('sheetChipsRow').innerHTML = '';
+  $('sheetChipsRow').style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════
+   DATASET TYPE  (Step 3)
+   selectDataset() — called by each grid button
+═══════════════════════════════════════════════ */
+const typeColsMap = {
+  sales:          'sale_date, customer_id / customer_name, product_id / product_name, quantity, unit_price, discount, payment_method',
+  products:       'name, category, supplier, sku, unit, cost_price, selling_price, current_stock, reorder_level',
+  customers:      'name, phone, email, city, customer_type',
+  expenses:       'category, amount, expense_date, description',
+  suppliers:      'name, contact_person, phone, email, city, rating',
+  purchases:      'purchase_date, supplier_id / supplier_name, product_id / product_name, quantity, unit_cost, status',
+  categories:     'name, description, parent_category',
+  sale_items:     'sale_id, product_id / product_name, quantity, unit_price, discount, line_total',
+  purchase_items: 'purchase_id, product_id / product_name, quantity, unit_cost, line_total',
+  stock_alerts:   'product_id / product_name, current_stock, reorder_level, alert_type, alert_date, status'
+};
+
+function selectDataset(type){
+  // Deselect all buttons
+  document.querySelectorAll('.ds-type-btn').forEach(b => b.classList.remove('selected'));
+  // Select matching button
+  const btn = document.querySelector(`.ds-type-btn[data-type="${type}"]`);
+  if(btn) btn.classList.add('selected');
+
+  selectedType = type;
+  const label = btn ? btn.querySelector('.ds-type-label').textContent : type;
+  $('selectedTypeDisplay').textContent = label+' dataset selected ✓';
+  $('selectedTypeDisplay').style.color = 'var(--cyan)';
+  $('expectedCols').textContent = typeColsMap[type] || 'No schema available.';
+  $('confirmType').textContent = label;
+
+  updateImportBtn();
+  if(selectedFile && selectedSheet) setStep(4);
+  else if(selectedFile) setStep(3);
+  toast('Dataset type set: '+label,'inf');
+  addLog('Dataset type: '+type,'inf');
+}
+
+// Legacy alias — keeps any existing calls to selectType() working
+function selectType(el){ selectDataset(el.dataset.type); }
+
+/* ═══════════════════════════════════════════════
+   PREVIEW  (Step 4)
+═══════════════════════════════════════════════ */
+function loadPreview(){
+  if(!selectedFile){ toast('Please upload a file first','err'); return; }
+  const progress = $('previewProgress');
+  progress.classList.add('show');
+  animateProgress('previewFill','previewPct',0,100,1200,()=>{
+    progress.classList.remove('show');
+    fetchPreview();
+  });
+  setStep(4);
+}
+
+function fetchPreview(){
+  const fd = new FormData();
+  if(selectedFile) fd.append('file', selectedFile);
+  if(selectedType) fd.append('type', selectedType);
+  if(selectedSheet) fd.append('sheet', selectedSheet);
+  fetch('/upload-preview',{ method:'POST', body:fd })
+    .then(r=>r.json())
+    .then(d=>renderPreview(d))
+    .catch(()=>renderPreview(generateMockPreview()));
+}
+
+function generateMockPreview(){
+  const type = selectedType || 'sales';
+  const schemas = {
+    sales:{           cols:['date','customer','product','qty','price','total'],          rows:Array.from({length:8},(_,i)=>[`2024-0${i+1}-${10+i}`,`Customer ${i+1}`,`Product ${i+1}`,Math.ceil(Math.random()*10),Math.round(Math.random()*500+100),Math.round(Math.random()*5000+500)])},
+    products:{        cols:['name','category','sku','cost_price','selling_price','stock'],rows:Array.from({length:8},(_,i)=>[`Product ${i+1}`,`Category ${(i%3)+1}`,`SKU-00${i+1}`,Math.round(Math.random()*200+50),Math.round(Math.random()*400+150),Math.ceil(Math.random()*100)])},
+    customers:{       cols:['name','phone','email','city','type'],                       rows:Array.from({length:8},(_,i)=>[`Customer ${i+1}`,`+91 9876${543210+i}`,`cust${i+1}@example.com`,['Hyderabad','Mumbai','Delhi','Chennai'][i%4],['retail','wholesale','vip','walk-in'][i%4]])},
+    expenses:{        cols:['category','amount','date','description'],                   rows:Array.from({length:8},(_,i)=>[`Expense Cat ${(i%4)+1}`,Math.round(Math.random()*5000+200),`2024-0${i+1}-${15+i}`,`Expense description ${i+1}`])},
+    suppliers:{       cols:['name','contact','phone','email','city','rating'],           rows:Array.from({length:8},(_,i)=>[`Supplier ${i+1}`,`Contact ${i+1}`,`+91 7654${321098+i}`,`sup${i+1}@biz.com`,['Mumbai','Pune','Ahmedabad','Surat'][i%4],(3+Math.random()*2).toFixed(1)])},
+    purchases:{       cols:['date','supplier','product','qty','unit_cost','status'],     rows:Array.from({length:8},(_,i)=>[`2024-0${i+1}-0${i+2}`,`Supplier ${(i%3)+1}`,`Product ${(i%5)+1}`,Math.ceil(Math.random()*50+5),Math.round(Math.random()*300+80),['pending','received','partial'][i%3]])},
+    categories:{      cols:['name','description','parent_category'],                    rows:Array.from({length:6},(_,i)=>[`Category ${i+1}`,`Description for cat ${i+1}`,i%2===0?'Root':'Category '+(i)])},
+    sale_items:{      cols:['sale_id','product','quantity','unit_price','total'],        rows:Array.from({length:8},(_,i)=>[`SALE-00${i+1}`,`Product ${(i%4)+1}`,Math.ceil(Math.random()*10),Math.round(Math.random()*500+100),Math.round(Math.random()*3000+300)])},
+    purchase_items:{  cols:['purchase_id','product','quantity','unit_cost','total'],     rows:Array.from({length:8},(_,i)=>[`PUR-00${i+1}`,`Product ${(i%4)+1}`,Math.ceil(Math.random()*20),Math.round(Math.random()*300+80),Math.round(Math.random()*2000+400)])},
+    stock_alerts:{    cols:['product','current_stock','reorder_level','alert_type','status'],rows:Array.from({length:6},(_,i)=>[`Product ${i+1}`,Math.ceil(Math.random()*15),20,['low_stock','out_of_stock'][i%2],['active','resolved'][i%2]])}
+  };
+  const schema = schemas[type] || schemas.sales;
+  return { columns:schema.cols, rows:schema.rows, total_rows:schema.rows.length+42, sheet:selectedSheet||'Sheet1' };
+}
+
+function renderPreview(d){
+  const thead=$('previewThead'), tbody=$('previewTbody');
+  if(!d || !d.columns || !d.rows){
+    thead.innerHTML='<tr><th colspan="5" style="text-align:center">No preview available</th></tr>';
+    tbody.innerHTML='<tr><td colspan="5"><div class="table-empty">No data</div></td></tr>';
+    return;
+  }
+  thead.innerHTML='<tr>'+d.columns.map(c=>`<th>${c}</th>`).join('')+'</tr>';
+  tbody.innerHTML=d.rows.slice(0,10).map(row=>'<tr>'+row.map(cell=>`<td>${cell??''}</td>`).join('')+'</tr>').join('');
+  const sheetNote = d.sheet ? ` · Sheet: <strong>${d.sheet}</strong>` : '';
+  $('previewMeta').innerHTML=`Showing ${Math.min(10,d.rows.length)} of ${d.total_rows||d.rows.length} rows${sheetNote}`;
+  toast('Preview loaded — '+d.rows.length+' rows visible','suc');
+  addLog(`Preview: ${d.columns.length} columns, ${d.total_rows||d.rows.length} total rows`+(d.sheet?' [sheet: '+d.sheet+']':''),'ok');
+  updateImportBtn();
+}
+
+/* ═══════════════════════════════════════════════
+   IMPORT — importSelectedSheet()
+   POST /import-sheet with file + sheet + dataset
+═══════════════════════════════════════════════ */
+function updateImportBtn(){
+  const ready = !!(selectedFile && selectedSheet && selectedType);
+  $('importBtn').disabled = !ready;
+}
+
+function importSelectedSheet(){
+  // Validation
+  if(!selectedFile){
+    toast('Please upload a file first','err');
+    alert('Validation Error: No file selected. Please upload an Excel or CSV file.');
+    return;
+  }
+  if(!selectedSheet){
+    toast('Please select a sheet first','err');
+    alert('Validation Error: No sheet selected. Please select an Excel sheet from the sheet selector.');
+    return;
+  }
+  if(!selectedType){
+    toast('Please select a dataset type first','err');
+    alert('Validation Error: No dataset type selected. Please choose a dataset type from the grid.');
+    return;
+  }
+
+  const btn = $('importBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="inline-spinner"></span> Importing…';
+
+  const prog = $('importProgress');
+  prog.classList.add('show');
+  $('importProgressLabel').textContent = 'Uploading file…';
+
+  animateProgress('importFill','importPct',0,60,800,()=>{
+    $('importProgressLabel').textContent = 'Processing rows from sheet: '+selectedSheet+'…';
+    animateProgress('importFill','importPct',60,95,1000,()=>{
+      $('importProgressLabel').textContent = 'Finalizing…';
+      sendImportSheet(btn, prog);
+    });
+  });
+  setStep(5);
+}
+
+function sendImportSheet(btn, prog){
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+  fd.append('sheet', selectedSheet);
+  fd.append('dataset', selectedType);
+
+  addLog(`Sending import: file=${selectedFile.name}, sheet=${selectedSheet}, dataset=${selectedType}`,'inf');
+
+  fetch('/import-sheet',{ method:'POST', body:fd })
+    .then(r => r.json())
+    .then(d => {
+      animateProgress('importFill','importPct',95,100,200,()=>{
+        prog.classList.remove('show');
+        btn.innerHTML = '✅ Import Complete';
+        showStatus(d.inserted||0, d.errors||0, d.type||selectedType);
+        toast('✅ Dataset imported successfully! '+(d.inserted||0)+' rows added.','suc');
+        addLog(`Import complete: ${d.inserted||0} inserted, ${d.errors||0} skipped`,'ok');
+        setStep(6);
+      });
+    })
+    .catch(() => {
+      // Demo fallback when backend is offline
+      const ins = Math.floor(Math.random()*120+30);
+      const errs = Math.floor(Math.random()*5);
+      animateProgress('importFill','importPct',95,100,200,()=>{
+        prog.classList.remove('show');
+        btn.innerHTML = '✅ Import Complete (Demo)';
+        showStatus(ins, errs, selectedType);
+        toast('Import simulated (API offline) — '+ins+' rows processed from sheet: '+selectedSheet,'inf');
+        addLog(`Demo import: sheet=${selectedSheet}, dataset=${selectedType}, ${ins} rows, ${errs} errors`,'warn');
+        setStep(6);
+      });
+    });
+}
+
+// Legacy alias — keeps original confirmImport() calls working
+function confirmImport(){ importSelectedSheet(); }
+
+function showStatus(inserted, errors, type){
+  $('stat-inserted').textContent = inserted;
+  $('stat-skipped').textContent = errors;
+  $('stat-type').textContent = (type||'—').replace(/_/g,' ');
+  $('statusPanel').classList.add('show');
+  $('statusPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+/* ═══════════════════════════════════════════════
+   LOGS
+═══════════════════════════════════════════════ */
+function addLog(msg, cls='inf'){
+  const log = $('importLog');
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${cls}">${msg}</span>`;
+  log.insertBefore(entry, log.firstChild);
+}
+
+/* ═══════════════════════════════════════════════
+   PROGRESS ANIMATION
+═══════════════════════════════════════════════ */
+function animateProgress(fillId, pctId, from, to, duration, cb){
+  const fill=$(fillId), pct=$(pctId);
+  const start = performance.now();
+  function step(now){
+    const p = Math.min(1,(now-start)/duration);
+    const val = from+(to-from)*p;
+    fill.style.width = val+'%';
+    pct.textContent = Math.round(val)+'%';
+    if(p<1) requestAnimationFrame(step);
+    else if(cb) cb();
+  }
+  requestAnimationFrame(step);
+}
+
+/* ═══════════════════════════════════════════════
+   CLEAR / RESET
+═══════════════════════════════════════════════ */
+function clearAll(){
+  clearFile();
+  selectedType = null;
+  document.querySelectorAll('.ds-type-btn').forEach(b => b.classList.remove('selected'));
+  $('selectedTypeDisplay').textContent = 'None selected — please choose a dataset type above';
+  $('selectedTypeDisplay').style.color = 'var(--tx2)';
+  $('expectedCols').textContent = 'Select a type to see required column names.';
+  $('confirmType').textContent = 'Not selected';
+  $('confirmSheet').textContent = 'Not selected';
+  $('previewThead').innerHTML = '<tr><th colspan="5" style="text-align:center;opacity:.5">Upload a file and click "Load Preview"</th></tr>';
+  $('previewTbody').innerHTML = '<tr><td colspan="5"><div class="table-empty"><div class="table-empty-icon">📊</div>No preview available yet</div></td></tr>';
+  $('previewMeta').textContent = 'Upload a file to see preview';
+  $('importBtn').innerHTML = '🚀 Import Dataset';
+  $('importBtn').disabled = true;
+  $('statusPanel').classList.remove('show');
+  $('importProgress').classList.remove('show');
+  $('previewProgress').classList.remove('show');
+  setStep(1);
+  toast('Import state reset','inf');
+}
+</script>
+</body>
+</html>
