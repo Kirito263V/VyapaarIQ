@@ -26,8 +26,8 @@ COLUMN_ALIASES = {
     },
     "products": {
         "name": ["name", "product", "product_name", "item"],
-        "category_id": ["category", "category_id", "category_name"],
-        "supplier_id": ["supplier", "supplier_id", "supplier_name"],
+        "category_id": ["category_id"],
+        "supplier_id": ["supplier_id"],
         "sku": ["sku", "barcode", "code", "item_code"],
         "unit": ["unit", "uom", "unit_of_measure"],
         "cost_price": ["cost", "cost_price", "purchase_price", "cp"],
@@ -36,7 +36,7 @@ COLUMN_ALIASES = {
         "reorder_level": ["reorder_level", "reorder", "min_stock"],
     },
     "sales": {
-        "customer_id": ["customer_id", "customer", "customer_name"],
+        "customer_id": ["customer_id"],
         "sale_date": ["sale_date", "date", "invoice_date"],
         "total_amount": ["total", "total_amount", "amount", "invoice_amount"],
         "payment_method": ["payment", "payment_method", "mode"],
@@ -44,21 +44,21 @@ COLUMN_ALIASES = {
     },
     "sale_items": {
         "sale_id": ["sale_id", "invoice_id"],
-        "product_id": ["product", "product_id", "product_name", "item"],
+        "product_id": ["product_id"],
         "quantity": ["quantity", "qty"],
         "price": ["price", "unit_price", "rate"],
         "discount": ["discount", "disc", "discount_pct"],
         "subtotal": ["subtotal", "line_total", "amount"],
     },
     "purchases": {
-        "supplier_id": ["supplier", "supplier_id", "supplier_name"],
+        "supplier_id": ["supplier_id"],
         "purchase_date": ["purchase_date", "date", "po_date"],
         "total_amount": ["total", "total_amount", "po_amount"],
         "status": ["status"],
     },
     "purchase_items": {
         "purchase_id": ["purchase_id", "po_id"],
-        "product_id": ["product", "product_id", "product_name", "item"],
+        "product_id": ["product_id"],
         "quantity": ["quantity", "qty"],
         "unit_cost": ["cost", "unit_cost", "rate"],
     },
@@ -73,10 +73,36 @@ COLUMN_ALIASES = {
         "description": ["description", "details"],
     },
     "stock_alerts": {
-        "product_id": ["product", "product_id", "product_name"],
+        "product_id": ["product_id"],
         "alert_type": ["alert_type", "type"],
         "threshold": ["threshold", "min_qty"],
         "is_active": ["is_active", "active", "status"],
+    },
+}
+
+HELPER_COLUMN_ALIASES = {
+    "products": {
+        "category_name": ["category", "category_name"],
+        "supplier_name": ["supplier", "supplier_name"],
+    },
+    "sales": {
+        "customer_name": ["customer", "customer_name"],
+    },
+    "sale_items": {
+        "product_name": ["product", "product_name", "item"],
+        "customer_name": ["customer", "customer_name"],
+        "sale_date": ["sale_date", "date", "invoice_date"],
+    },
+    "purchases": {
+        "supplier_name": ["supplier", "supplier_name"],
+    },
+    "purchase_items": {
+        "product_name": ["product", "product_name", "item"],
+        "supplier_name": ["supplier", "supplier_name"],
+        "purchase_date": ["purchase_date", "date", "po_date"],
+    },
+    "stock_alerts": {
+        "product_name": ["product", "product_name"],
     },
 }
 
@@ -204,6 +230,99 @@ PARENT_LOOKUP_FIELDS = {
     },
 }
 
+FK_RESOLUTION_MAP = {
+    "products": [
+        {
+            "id_field": "category_id",
+            "name_field": "category_name",
+            "table": "categories",
+            "name_column": "name",
+            "auto_create": True,
+        },
+        {
+            "id_field": "supplier_id",
+            "name_field": "supplier_name",
+            "table": "suppliers",
+            "name_column": "name",
+            "auto_create": True,
+        },
+    ],
+    "sales": [
+        {
+            "id_field": "customer_id",
+            "name_field": "customer_name",
+            "table": "customers",
+            "name_column": "name",
+            "auto_create": True,
+        },
+    ],
+    "purchases": [
+        {
+            "id_field": "supplier_id",
+            "name_field": "supplier_name",
+            "table": "suppliers",
+            "name_column": "name",
+            "auto_create": True,
+        },
+    ],
+    "sale_items": [
+        {
+            "id_field": "product_id",
+            "name_field": "product_name",
+            "table": "products",
+            "name_column": "name",
+            "auto_create": True,
+        },
+    ],
+    "purchase_items": [
+        {
+            "id_field": "product_id",
+            "name_field": "product_name",
+            "table": "products",
+            "name_column": "name",
+            "auto_create": True,
+        },
+    ],
+    "stock_alerts": [
+        {
+            "id_field": "product_id",
+            "name_field": "product_name",
+            "table": "products",
+            "name_column": "name",
+            "auto_create": True,
+        },
+    ],
+}
+
+DEFAULT_FIELD_VALUES = {
+    "description": None,
+    "notes": None,
+    "email": None,
+    "phone": None,
+    "city": None,
+    "customer_type": None,
+    "contact_person": None,
+    "rating": None,
+    "status": "Delivered",
+    "payment_method": None,
+    "sku": None,
+    "unit": None,
+    "cost_price": None,
+    "selling_price": None,
+    "current_stock": 0,
+    "reorder_level": 10,
+    "discount": 0,
+    "is_active": 1,
+    "category_id": None,
+    "supplier_id": None,
+}
+OPTIONAL_DEFAULT_FIELDS = set(DEFAULT_FIELD_VALUES.keys())
+HELPER_FIELDS = {
+    field
+    for dataset_fields in HELPER_COLUMN_ALIASES.values()
+    for field in dataset_fields.keys()
+}
+
 
 def _error(code, err_type, field, message, value=None):
     return {
@@ -272,12 +391,146 @@ def _lookup_fk(cursor, ref_table, ref_col, raw_val, user_id):
     return None
 
 
+def resolve_fk(conn, table, name_column, name_value, user_id):
+    if not name_value:
+        return None
+
+    clean = str(name_value).strip()
+    row = conn.execute(
+        f"""
+        SELECT id
+        FROM {table}
+        WHERE LOWER(TRIM({name_column})) = LOWER(TRIM(?))
+        AND user_id = ?
+        """,
+        (clean, user_id),
+    ).fetchone()
+
+    return int(row["id"]) if row else None
+
+
 def _id_belongs_to_user(cursor, ref_table, record_id, user_id):
     row = cursor.execute(
         f"SELECT id FROM {ref_table} WHERE id = ? AND user_id = ?",
         (record_id, user_id),
     ).fetchone()
     return row is not None
+
+
+def _auto_create_lookup_record(conn, table, name_column, name_value, user_id, row=None):
+    clean_name = _safe_val(name_value)
+    if clean_name is None:
+        return None
+
+    values = {"user_id": user_id}
+    row = row or {}
+
+    if table == "categories":
+        values.update({
+            name_column: clean_name,
+            "description": _safe_val(row.get("description")),
+        })
+    elif table == "customers":
+        values.update({
+            name_column: clean_name,
+            "phone": _safe_val(row.get("phone")),
+            "email": _safe_val(row.get("email")),
+            "city": _safe_val(row.get("city")),
+            "customer_type": _safe_val(row.get("customer_type")),
+        })
+    elif table == "suppliers":
+        values.update({
+            name_column: clean_name,
+            "contact_person": _safe_val(row.get("contact_person")),
+            "phone": _safe_val(row.get("phone")),
+            "email": _safe_val(row.get("email")),
+            "city": _safe_val(row.get("city")),
+            "rating": _safe_val(row.get("rating")),
+        })
+    elif table == "products":
+        values.update({
+            name_column: clean_name,
+            "category_id": _safe_val(row.get("category_id")),
+            "supplier_id": _safe_val(row.get("supplier_id")),
+            "sku": _safe_val(row.get("sku")),
+            "unit": _safe_val(row.get("unit")),
+            "cost_price": _safe_val(row.get("cost_price")),
+            "selling_price": _safe_val(row.get("selling_price")),
+            "current_stock": _safe_val(row.get("current_stock")),
+            "reorder_level": _safe_val(row.get("reorder_level")),
+        })
+    else:
+        values[name_column] = clean_name
+
+    columns = [column for column, value in values.items() if value is not None]
+    placeholders = ", ".join(["?"] * len(columns))
+    column_sql = ", ".join(columns)
+    insert_values = [values[column] for column in columns]
+
+    conn.execute(
+        f"INSERT INTO {table} ({column_sql}) VALUES ({placeholders})",
+        tuple(insert_values),
+    )
+    created_id = resolve_fk(conn, table, name_column, clean_name, user_id)
+    if created_id is not None:
+        logger.info(
+            "Auto-created %s record for user_id=%s using %s=%r -> id=%s",
+            table,
+            user_id,
+            name_column,
+            clean_name,
+            created_id,
+        )
+    return created_id
+
+
+def _resolve_fk_value(conn, cursor, table, name_column, id_field, name_value, id_value, user_id, auto_create=False, row=None):
+    clean_name = _safe_val(name_value)
+    clean_id = _safe_val(id_value)
+
+    if clean_name is not None:
+        resolved_id = resolve_fk(conn, table, name_column, clean_name, user_id)
+        if resolved_id is None and auto_create:
+            resolved_id = _auto_create_lookup_record(conn, table, name_column, clean_name, user_id, row=row)
+        if resolved_id is None:
+            return None, _error(
+                "FK_LOOKUP_ERROR",
+                "lookup",
+                id_field,
+                f"{id_field} could not be resolved from {name_column}={clean_name!r} for this user",
+                value=clean_name,
+            )
+        return resolved_id, None
+
+    if clean_id is None:
+        return None, None
+
+    if _is_resolvable(clean_id):
+        resolved_id = resolve_fk(conn, table, name_column, clean_id, user_id)
+        if resolved_id is None and auto_create:
+            resolved_id = _auto_create_lookup_record(conn, table, name_column, clean_id, user_id, row=row)
+        if resolved_id is None:
+            return None, _error(
+                "FK_LOOKUP_ERROR",
+                "lookup",
+                id_field,
+                f"{id_field} value {clean_id!r} was not found in {table}.{name_column} for this user",
+                value=clean_id,
+            )
+        return resolved_id, None
+
+    resolved_id, numeric_error = _normalize_integer_id(id_field, clean_id)
+    if numeric_error:
+        return None, numeric_error
+    if not _id_belongs_to_user(cursor, table, resolved_id, user_id):
+        return None, _error(
+            "FK_LOOKUP_ERROR",
+            "lookup",
+            id_field,
+            f"{id_field} value {resolved_id!r} does not belong to this user in {table}; provide {name_column} instead",
+            value=clean_id,
+        )
+    return resolved_id, None
 
 
 def _first_present_value(row, aliases):
@@ -421,6 +674,10 @@ def _dataset_alias_lookup(dataset):
         alias_lookup[standard_col.lower()] = standard_col
         for alias in aliases:
             alias_lookup[str(alias).strip().lower()] = standard_col
+    for helper_col, aliases in HELPER_COLUMN_ALIASES.get(dataset, {}).items():
+        alias_lookup[helper_col.lower()] = helper_col
+        for alias in aliases:
+            alias_lookup[str(alias).strip().lower()] = helper_col
     return alias_lookup
 
 
@@ -463,6 +720,10 @@ def normalize_columns(data, dataset):
         expected = set(COLUMN_ALIASES[dataset].keys())
         found = set(renamed.columns)
         missing = sorted(expected - found)
+        if missing and dataset in FK_RESOLUTION_MAP:
+            for config in FK_RESOLUTION_MAP[dataset]:
+                if config["id_field"] in missing and config["name_field"] in found:
+                    missing.remove(config["id_field"])
         if missing:
             logger.warning("normalize_columns(%s): expected columns not found -> %s", dataset, missing)
 
@@ -586,36 +847,44 @@ def resolve_foreign_keys(row, dataset, conn, user_id):
 
     cursor = conn.cursor()
 
-    for fk_col, ref_table, ref_col in FK_MAP.get(dataset, []):
-        raw_val = normalized.get(fk_col)
-        if raw_val is None:
+    for config in FK_RESOLUTION_MAP.get(dataset, []):
+        id_field = config["id_field"]
+        name_field = config["name_field"]
+        resolved_id, error = _resolve_fk_value(
+            conn,
+            cursor,
+            config["table"],
+            config["name_column"],
+            id_field,
+            normalized.get(name_field),
+            normalized.get(id_field),
+            user_id,
+            auto_create=config.get("auto_create", False),
+            row=normalized,
+        )
+        if error:
+            logger.warning(
+                "FK lookup failure dataset=%s field=%s name=%r raw_id=%r target=%s.%s user_id=%s",
+                dataset,
+                id_field,
+                normalized.get(name_field),
+                normalized.get(id_field),
+                config["table"],
+                config["name_column"],
+                user_id,
+            )
+            errors.append(error)
             continue
-
-        if _is_resolvable(raw_val):
-            resolved_id = _lookup_fk(cursor, ref_table, ref_col, raw_val, user_id)
-            if resolved_id is None:
-                logger.warning(
-                    "FK lookup failure dataset=%s field=%s value=%r target=%s.%s user_id=%s",
-                    dataset,
-                    fk_col,
-                    raw_val,
-                    ref_table,
-                    ref_col,
-                    user_id,
-                )
-                errors.append(
-                    _error(
-                        "FK_LOOKUP_ERROR",
-                        "lookup",
-                        fk_col,
-                        f"{fk_col} value {raw_val!r} was not found in {ref_table}.{ref_col} for this user",
-                        value=raw_val,
-                    )
-                )
-                continue
-
-            normalized[fk_col] = resolved_id
-            logger.info("resolve_foreign_keys(%s): %s=%r -> %s", dataset, fk_col, raw_val, resolved_id)
+        if resolved_id is not None:
+            normalized[id_field] = resolved_id
+            logger.info(
+                "resolve_foreign_keys(%s): %s resolved using %s=%r -> %s",
+                dataset,
+                id_field,
+                name_field,
+                normalized.get(name_field),
+                resolved_id,
+            )
 
     normalized, parent_errors = _resolve_parent_transaction_id(normalized, dataset, cursor, user_id)
     errors.extend(parent_errors)
@@ -666,6 +935,8 @@ def validate_required_fields(row, dataset):
 def validate_null_values(row, dataset):
     errors = []
     for field in DATASET_COLUMNS.get(dataset, []):
+        if field in OPTIONAL_DEFAULT_FIELDS:
+            continue
         if _safe_val(row.get(field)) is None:
             errors.append(
                 _error(
@@ -684,6 +955,10 @@ def normalize_row(row, dataset, conn, user_id):
         for key, value in (row.to_dict().items() if hasattr(row, "to_dict") else dict(row).items())
     }
     normalized = normalize_columns(sanitized, dataset)
+    for field, default_value in DEFAULT_FIELD_VALUES.items():
+        normalized.setdefault(field, default_value)
+    for field in HELPER_FIELDS:
+        normalized.setdefault(field, None)
     normalized, datatype_errors = normalize_datatypes(normalized, dataset)
     normalized, fk_errors = resolve_foreign_keys(normalized, dataset, conn, user_id)
     required_errors = validate_required_fields(normalized, dataset)

@@ -520,7 +520,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
         <div class="card">
           <div class="card-head"><div class="card-title"><div class="card-title-icon" style="background:rgba(0,212,255,.1)">📉</div>Revenue vs Cost Trend</div></div>
           <div class="card-body">
-            <div class="chart-wrap"><canvas id="revCostChart"></canvas></div>
+            <div class="chart-wrap" id="revCostWrap"><canvas id="revCostChart"></canvas></div>
           </div>
         </div>
       </div>
@@ -944,8 +944,9 @@ async function loadProfitAnalysis() {
   try {
     renderProfitAnalysis(await fetchJSON('/api/profit-analysis'));
   } catch(e) {
-    renderProfitAnalysis({ revenue:428600, cogs:280000, expenses:38200, profit:110400, gross_margin:34.7, net_margin:25.8, roi:32.4 });
+    renderProfitAnalysis({ revenue:0, cogs:0, expenses:0, profit:0, gross_margin:0, net_margin:0, roi:0 });
   }
+  await loadRevenueCostTrend();
 }
 
 function renderProfitAnalysis(data) {
@@ -966,27 +967,57 @@ function renderProfitAnalysis(data) {
     $('pf-exp').style.width = rev ? Math.min(100,(exp/rev)*100)+'%' : '0%';
     $('pf-profit').style.width = rev ? Math.min(100,Math.abs(profit/rev)*100)+'%' : '0%';
   }, 80);
-
-  // Rev vs Cost trend chart (uses same sales trend labels as proxy)
-  renderRevCostChart(data);
 }
 
-function renderRevCostChart(data) {
+async function loadRevenueCostTrend() {
+  try {
+    renderRevenueCostTrend(await fetchJSON(apiUrl('/api/revenue-cost-trend')));
+  } catch(e) {
+    renderRevenueCostTrend({ labels: [], revenue: [], cost: [] });
+  }
+}
+
+function showRevenueCostTrendEmptyState() {
+  destroyChart('revCost');
+  const wrap = $('revCostWrap');
+  const canvas = $('revCostChart');
+  if(canvas) canvas.style.display = 'none';
+  if(wrap && !$('revCostEmpty')) {
+    const empty = document.createElement('div');
+    empty.id = 'revCostEmpty';
+    empty.className = 'empty-state';
+    empty.textContent = 'No transaction data available for selected period';
+    wrap.appendChild(empty);
+  }
+}
+
+function renderRevenueCostTrend(data) {
+  const labels = Array.isArray(data.labels) ? data.labels : [];
+  const revenue = Array.isArray(data.revenue) ? data.revenue.map(v => Number(v||0)) : [];
+  const cost = Array.isArray(data.cost) ? data.cost.map(v => Number(v||0)) : [];
+
+  if(labels.length === 0) {
+    console.warn('No revenue-cost trend data available');
+    showRevenueCostTrendEmptyState();
+    return;
+  }
+
   applyChartDefaults();
   destroyChart('revCost');
+  const emptyState = $('revCostEmpty');
+  if(emptyState) emptyState.remove();
+  const canvas = $('revCostChart');
+  if(canvas) canvas.style.display = '';
   const ctx = $('revCostChart').getContext('2d');
-  const months = ['Oct','Nov','Dec','Jan','Feb','Mar'];
-  const revArr = [62000,78000,95000,71000,88000, Number(data.revenue||100000)];
-  const costArr = [45000,58000,70000,52000,65000, Number(data.cogs||0)+Number(data.expenses||0)];
   const g1 = buildGradient(ctx, ['rgba(0,212,255,.3)','rgba(0,212,255,.01)']);
   const g2 = buildGradient(ctx, ['rgba(239,68,68,.25)','rgba(239,68,68,.01)']);
   chartInstances['revCost'] = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: months,
+      labels,
       datasets: [
-        { label:'Revenue', data:revArr, borderColor:'#00d4ff', backgroundColor:g1, fill:true, tension:0.4, borderWidth:2, pointRadius:3 },
-        { label:'Total Cost', data:costArr, borderColor:'#ef4444', backgroundColor:g2, fill:true, tension:0.4, borderWidth:2, pointRadius:3 }
+        { label:'Revenue', data:revenue, borderColor:'#00d4ff', backgroundColor:g1, fill:true, tension:0.4, borderWidth:2, pointRadius:3 },
+        { label:'Total Cost', data:cost, borderColor:'#ef4444', backgroundColor:g2, fill:true, tension:0.4, borderWidth:2, pointRadius:3 }
       ]
     },
     options: {

@@ -8,8 +8,9 @@ import smtplib
 import zipfile
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
+from migration_production import hash_password, is_password_hash, run_production_migration
 from routes.import_routes import import_bp
 
 
@@ -19,23 +20,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = "vyapaariq_secret_key"
+app.permanent_session_lifetime = timedelta(hours=2)
 
 DB = "vyapaariq.db"
 app.config["DATABASE"] = DB
 app.register_blueprint(import_bp)
-
-USER_SCOPED_TABLES = [
-    "customers",
-    "products",
-    "sales",
-    "expenses",
-    "suppliers",
-    "categories",
-    "purchases",
-    "purchase_items",
-    "sale_items",
-    "stock_alerts",
-]
 
 # ================= DATABASE CONNECTION =================
 
@@ -73,36 +62,15 @@ def _get_user_by_id(conn, user_id):
 def _password_matches(stored_password, provided_password):
     if not stored_password:
         return False
-    if stored_password == provided_password:
-        return True
+    if not is_password_hash(stored_password):
+        return stored_password == provided_password
     try:
         return check_password_hash(stored_password, provided_password)
     except ValueError:
         return False
 
 
-def _ensure_user_scoped_schema():
-    conn = get_db()
-    try:
-        for table in USER_SCOPED_TABLES:
-            columns = {
-                row["name"]: row
-                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-            }
-            if "user_id" not in columns:
-                conn.execute(
-                    f"ALTER TABLE {table} ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0"
-                )
-                logger.info("Added user_id column to %s", table)
-            conn.execute(
-                f"CREATE INDEX IF NOT EXISTS idx_{table}_user_id ON {table}(user_id)"
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-_ensure_user_scoped_schema()
+run_production_migration(DB, logger)
 
 
 # ================= LOGIN REQUIRED DECORATOR =================
@@ -119,6 +87,22 @@ def login_required(func):
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def _get_analytics_start_date():
+    range_value = request.args.get("range", "180")
+    if range_value == "all":
+        return None
+
+    try:
+        days = int(range_value)
+    except (TypeError, ValueError):
+        days = 180
+
+    if days < 0:
+        days = 180
+
+    return (datetime.now().date() - timedelta(days=days)).isoformat()
 
 
 # ================= SMTP CONFIG =================
@@ -215,6 +199,7 @@ def send_otp():
     email = data["email"]
     phone = data["phone"]
     password = data["password"]
+    hashed_password = hash_password(password)
 
     otp = str(random.randint(100000, 999999))
 
@@ -226,9 +211,10 @@ def send_otp():
         INSERT INTO otp_verification
         (name,email,phone,password,otp_code,otp_expires_at)
         VALUES(?,?,?,?,?,?)
-    """, (name, email, phone, password, otp, expires))
+    """, (name, email, phone, hashed_password, otp, expires))
 
     conn.commit()
+    conn.close()
 
     send_email_otp(email, otp)
 
@@ -255,12 +241,15 @@ def verify_otp():
     """, (email,)).fetchone()
 
     if not record:
+        conn.close()
         return jsonify({"message": "OTP not found"}), 400
 
     if record["otp_code"] != otp:
+        conn.close()
         return jsonify({"message": "Invalid OTP"}), 400
 
     if datetime.now() > datetime.fromisoformat(record["otp_expires_at"]):
+        conn.close()
         return jsonify({"message": "OTP expired"}), 400
 
 
@@ -270,8 +259,12 @@ def verify_otp():
     """, (email,)).fetchone()
 
     if existing_user:
+        conn.close()
         return jsonify({"message": "User already verified. Please login."})
 
+    password_to_store = record["password"]
+    if not is_password_hash(password_to_store):
+        password_to_store = hash_password(password_to_store)
 
     conn.execute("""
         INSERT INTO users(name,email,phone,password)
@@ -280,10 +273,11 @@ def verify_otp():
         record["name"],
         record["email"],
         record["phone"],
-        generate_password_hash(record["password"])
+        password_to_store
     ))
 
     conn.commit()
+    conn.close()
 
     return jsonify({"message": "Signup successful"})
 
@@ -307,14 +301,17 @@ def login():
         """, (email,)).fetchone()
 
         if not user or not _password_matches(user["password"], password):
+            conn.close()
 
             return jsonify({
                 "error": "Invalid login credentials"
             }), 401
 
         session.clear()
+        session.permanent = True
         session["user_id"] = user["id"]
         session["user_email"] = user["email"]
+        conn.close()
 
 
         return jsonify({
@@ -342,10 +339,8 @@ def logout():
 
 
 @app.route("/change-password", methods=["POST"])
+@login_required
 def change_password():
-
-    if "user_id" not in session:
-        return redirect("/login")
 
     current_password = request.form.get("current_password", "")
     new_password = request.form.get("new_password", "")
@@ -374,7 +369,7 @@ def change_password():
 
     conn.execute(
         "UPDATE users SET password = ? WHERE id = ?",
-        (generate_password_hash(new_password), user["id"]),
+        (hash_password(new_password), user["id"]),
     )
     conn.commit()
     conn.close()
@@ -383,10 +378,8 @@ def change_password():
 
 
 @app.route("/delete-my-data", methods=["POST"])
+@login_required
 def delete_my_data():
-
-    if "user_id" not in session:
-        return redirect("/login")
 
     user_id = _current_user_id()
     conn = get_db()
@@ -414,10 +407,8 @@ def delete_my_data():
 
 
 @app.route("/export-my-data")
+@login_required
 def export_my_data():
-
-    if "user_id" not in session:
-        return redirect("/login")
 
     user_id = _current_user_id()
     conn = get_db()
@@ -1038,30 +1029,55 @@ def dashboard_summary():
 
     conn = get_db()
     user_id = _current_user_id()
+    start_date = _get_analytics_start_date()
+
+    sales_filter = ""
+    purchase_filter = ""
+    expense_filter = ""
+    sales_params = [user_id]
+    purchase_params = [user_id]
+    expense_params = [user_id]
+
+    if start_date:
+        sales_filter = " AND sale_date >= ?"
+        purchase_filter = " AND purchase_date >= ?"
+        expense_filter = " AND expense_date >= ?"
+        sales_params.append(start_date)
+        purchase_params.append(start_date)
+        expense_params.append(start_date)
 
     total_sales = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + sales_filter, tuple(sales_params)).fetchone()[0]
 
     total_purchases = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + purchase_filter, tuple(purchase_params)).fetchone()[0]
 
     total_expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + expense_filter, tuple(expense_params)).fetchone()[0]
 
-    total_customers = conn.execute("""
-        SELECT COUNT(*)
-        FROM customers
-        WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    if start_date:
+        total_customers = conn.execute("""
+            SELECT COUNT(DISTINCT customer_id)
+            FROM sales
+            WHERE user_id = ?
+            AND customer_id IS NOT NULL
+            AND sale_date >= ?
+        """, (user_id, start_date)).fetchone()[0]
+    else:
+        total_customers = conn.execute("""
+            SELECT COUNT(*)
+            FROM customers
+            WHERE user_id = ?
+        """, (user_id,)).fetchone()[0]
 
     total_products = conn.execute("""
         SELECT COUNT(*)
@@ -1079,18 +1095,21 @@ def dashboard_summary():
         SELECT COUNT(*)
         FROM sales
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + sales_filter, tuple(sales_params)).fetchone()[0]
 
     total_profit = conn.execute("""
         SELECT ROUND(COALESCE(SUM(
             COALESCE(si.subtotal, 0) - (COALESCE(si.quantity, 0) * COALESCE(p.cost_price, 0))
         ), 0), 2)
         FROM sale_items si
+        JOIN sales s
+        ON s.id = si.sale_id
+        AND s.user_id = si.user_id
         JOIN products p
         ON p.id = si.product_id
         AND p.user_id = si.user_id
         WHERE si.user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + (" AND s.sale_date >= ?" if start_date else ""), tuple(sales_params)).fetchone()[0]
 
     top_product_row = conn.execute("""
         SELECT
@@ -1098,14 +1117,18 @@ def dashboard_summary():
             COALESCE(SUM(si.quantity), 0) AS total_qty,
             ROUND(COALESCE(SUM(si.subtotal), 0), 2) AS revenue
         FROM sale_items si
+        JOIN sales s
+        ON s.id = si.sale_id
+        AND s.user_id = si.user_id
         JOIN products p
         ON p.id = si.product_id
         AND p.user_id = si.user_id
         WHERE si.user_id = ?
+    """ + (" AND s.sale_date >= ?" if start_date else "") + """
         GROUP BY p.id, p.name
         ORDER BY total_qty DESC, revenue DESC, p.name ASC
         LIMIT 1
-    """, (user_id,)).fetchone()
+    """, tuple(sales_params)).fetchone()
 
     trend_rows = conn.execute("""
         SELECT
@@ -1114,9 +1137,10 @@ def dashboard_summary():
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
+    """ + (" AND sale_date >= ?" if start_date else "") + """
         GROUP BY month
         ORDER BY month
-    """, (user_id,)).fetchall()
+    """, tuple(sales_params)).fetchall()
 
     low_stock = conn.execute("""
         SELECT COUNT(*)
@@ -1159,6 +1183,11 @@ def sales_trend():
 
     conn = get_db()
     user_id = _current_user_id()
+    start_date = _get_analytics_start_date()
+    params = [user_id]
+
+    if start_date:
+        params.append(start_date)
 
     rows = conn.execute("""
         SELECT
@@ -1167,9 +1196,10 @@ def sales_trend():
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
+    """ + (" AND sale_date >= ?" if start_date else "") + """
         GROUP BY month
         ORDER BY month
-    """, (user_id,)).fetchall()
+    """, tuple(params)).fetchall()
 
     labels = []
     values = []
@@ -1240,12 +1270,115 @@ def profit_analysis():
     })
 
 
+@app.route("/api/revenue-cost-trend")
+@login_required
+def revenue_cost_trend():
+
+    conn = get_db()
+    user_id = _current_user_id()
+    start_date = _get_analytics_start_date()
+
+    sales_params = [user_id]
+    purchase_params = [user_id]
+    expense_params = [user_id]
+
+    sales_filter = ""
+    purchase_filter = ""
+    expense_filter = ""
+
+    if start_date:
+        sales_filter = " AND sale_date >= ?"
+        purchase_filter = " AND purchase_date >= ?"
+        expense_filter = " AND expense_date >= ?"
+        sales_params.append(start_date)
+        purchase_params.append(start_date)
+        expense_params.append(start_date)
+
+    sales_rows = conn.execute("""
+        SELECT
+            strftime('%Y-%m', sale_date) AS month,
+            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+        FROM sales
+        WHERE user_id = ?
+        AND sale_date IS NOT NULL
+    """ + sales_filter + """
+        GROUP BY month
+        ORDER BY month
+    """, tuple(sales_params)).fetchall()
+
+    if not sales_rows:
+        return jsonify({
+            "labels": [],
+            "revenue": [],
+            "cost": []
+        })
+
+    purchase_rows = conn.execute("""
+        SELECT
+            strftime('%Y-%m', purchase_date) AS month,
+            ROUND(COALESCE(SUM(total_amount), 0), 2) AS amount
+        FROM purchases
+        WHERE user_id = ?
+        AND purchase_date IS NOT NULL
+    """ + purchase_filter + """
+        GROUP BY month
+        ORDER BY month
+    """, tuple(purchase_params)).fetchall()
+
+    expense_rows = conn.execute("""
+        SELECT
+            strftime('%Y-%m', expense_date) AS month,
+            ROUND(COALESCE(SUM(amount), 0), 2) AS amount
+        FROM expenses
+        WHERE user_id = ?
+        AND expense_date IS NOT NULL
+    """ + expense_filter + """
+        GROUP BY month
+        ORDER BY month
+    """, tuple(expense_params)).fetchall()
+
+    revenue_by_month = {
+        row["month"]: float(row["revenue"] or 0)
+        for row in sales_rows
+        if row["month"]
+    }
+    purchase_by_month = {
+        row["month"]: float(row["amount"] or 0)
+        for row in purchase_rows
+        if row["month"]
+    }
+    expense_by_month = {
+        row["month"]: float(row["amount"] or 0)
+        for row in expense_rows
+        if row["month"]
+    }
+
+    months = sorted(set(revenue_by_month) | set(purchase_by_month) | set(expense_by_month))
+
+    return jsonify({
+        "labels": [
+            datetime.strptime(f"{month}-01", "%Y-%m-%d").strftime("%b")
+            for month in months
+        ],
+        "revenue": [revenue_by_month.get(month, 0) for month in months],
+        "cost": [
+            round(purchase_by_month.get(month, 0) + expense_by_month.get(month, 0), 2)
+            for month in months
+        ]
+    })
+
+
 @app.route("/api/customer-insights")
 @login_required
 def customer_insights():
 
     conn = get_db()
     user_id = _current_user_id()
+    start_date = _get_analytics_start_date()
+    params = [user_id]
+
+    if start_date:
+        params.append(start_date)
 
     rows = conn.execute("""
         SELECT
@@ -1256,10 +1389,11 @@ def customer_insights():
         ON customers.id = sales.customer_id
         AND customers.user_id = sales.user_id
         WHERE sales.user_id = ?
+    """ + (" AND sales.sale_date >= ?" if start_date else "") + """
         GROUP BY customers.id, customers.name
         ORDER BY total DESC
         LIMIT 5
-    """, (user_id,)).fetchall()
+    """, tuple(params)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
@@ -1296,19 +1430,26 @@ def expense_breakdown():
 
     conn = get_db()
     user_id = _current_user_id()
+    start_date = _get_analytics_start_date()
+    expense_filter = ""
+    expense_params = [user_id]
+
+    if start_date:
+        expense_filter = " AND expense_date >= ?"
+        expense_params.append(start_date)
 
     total_expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + expense_filter, tuple(expense_params)).fetchone()[0]
 
     current_month = conn.execute("""
         SELECT strftime('%Y-%m', MAX(expense_date))
         FROM expenses
         WHERE user_id = ?
         AND expense_date IS NOT NULL
-    """, (user_id,)).fetchone()[0]
+    """ + expense_filter, tuple(expense_params)).fetchone()[0]
 
     previous_month = None
     if current_month:
@@ -1322,9 +1463,10 @@ def expense_breakdown():
             ROUND(COALESCE(SUM(amount), 0), 2) AS amount
         FROM expenses
         WHERE user_id = ?
+    """ + expense_filter + """
         GROUP BY category
         ORDER BY amount DESC
-    """, (user_id,)).fetchall()
+    """, tuple(expense_params)).fetchall()
 
     result = []
     for row in rows:
@@ -1335,18 +1477,24 @@ def expense_breakdown():
         previous_amount = 0
 
         if current_month:
+            current_params = [user_id, row["category"], current_month]
+            if start_date:
+                current_params.append(start_date)
             current_amount = conn.execute("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category = ? AND strftime('%Y-%m', expense_date) = ?
-            """, (user_id, row["category"], current_month)).fetchone()[0] or 0
+                WHERE user_id = ? AND category IS ? AND strftime('%Y-%m', expense_date) = ?
+            """ + (" AND expense_date >= ?" if start_date else ""), tuple(current_params)).fetchone()[0] or 0
 
         if previous_month:
+            previous_params = [user_id, row["category"], previous_month]
+            if start_date:
+                previous_params.append(start_date)
             previous_amount = conn.execute("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category = ? AND strftime('%Y-%m', expense_date) = ?
-            """, (user_id, row["category"], previous_month)).fetchone()[0] or 0
+                WHERE user_id = ? AND category IS ? AND strftime('%Y-%m', expense_date) = ?
+            """ + (" AND expense_date >= ?" if start_date else ""), tuple(previous_params)).fetchone()[0] or 0
 
         if previous_amount:
             change = ((current_amount - previous_amount) / previous_amount) * 100
@@ -1371,20 +1519,29 @@ def top_products():
 
     conn = get_db()
     user_id = _current_user_id()
+    start_date = _get_analytics_start_date()
+    params = [user_id]
+
+    if start_date:
+        params.append(start_date)
 
     rows = conn.execute("""
         SELECT
             products.name,
             ROUND(SUM(sale_items.quantity * sale_items.price), 2) AS revenue
         FROM sale_items
+        JOIN sales
+        ON sales.id = sale_items.sale_id
+        AND sales.user_id = sale_items.user_id
         JOIN products
         ON products.id = sale_items.product_id
         AND products.user_id = sale_items.user_id
         WHERE sale_items.user_id = ?
+    """ + (" AND sales.sale_date >= ?" if start_date else "") + """
         GROUP BY products.id, products.name
         ORDER BY revenue DESC
         LIMIT 5
-    """, (user_id,)).fetchall()
+    """, tuple(params)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
