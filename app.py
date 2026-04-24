@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
 
 from database.migration_production import hash_password, is_password_hash, run_production_migration
-from database.init_database import init_database
+from database.init_database import reset_database
 from routes.import_routes import import_bp
 from services.analytics_service import apply_date_filter
 
@@ -38,7 +38,7 @@ app.config["DATABASE"] = DB
 
 try:
     logger.info("Initializing database schema...")
-    init_database(DB)
+    reset_database(DB)
 
     logger.info("Running production migration...")
     run_production_migration(DB, logger)
