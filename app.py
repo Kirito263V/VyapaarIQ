@@ -35,6 +35,13 @@ DB = os.environ.get(
 
 app.config["DATABASE"] = DB
 
+# Run production migration at startup (required for Render /tmp SQLite)
+try:
+    logger.info("Running production migration at startup...")
+    run_production_migration(DB, logger)
+except Exception as e:
+    logger.error(f"Migration failed: {e}")
+
 app.register_blueprint(import_bp)
 # ================= DATABASE CONNECTION =================
 
