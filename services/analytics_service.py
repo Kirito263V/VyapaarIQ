@@ -1,6 +1,8 @@
+import os
 import sqlite3
 
-DB = "vyapaariq.db"
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DB = os.path.normpath(os.path.join(BASE_DIR, "..", "instance", "vyapaariq.db"))
 
 
 def execute_query(query, params=()):

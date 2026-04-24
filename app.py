@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, send_file
+import os
 import csv
 import io
 import logging
@@ -10,7 +11,7 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
 
-from migration_production import hash_password, is_password_hash, run_production_migration
+from database.migration_production import hash_password, is_password_hash, run_production_migration
 from routes.import_routes import import_bp
 from services.analytics_service import apply_date_filter
 
@@ -19,14 +20,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-app = Flask(__name__)
-app.secret_key = "vyapaariq_secret_key"
+app = Flask(__name__, template_folder="templates", static_folder="static")
+
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+
 app.permanent_session_lifetime = timedelta(hours=2)
 
-DB = "vyapaariq.db"
-app.config["DATABASE"] = DB
-app.register_blueprint(import_bp)
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
+DB = os.environ.get(
+    "DATABASE_PATH",
+    os.path.join(BASE_DIR, "instance", "vyapaariq.db")
+)
+
+app.config["DATABASE"] = DB
+
+app.register_blueprint(import_bp)
 # ================= DATABASE CONNECTION =================
 
 def get_db():
@@ -116,9 +125,10 @@ def _get_analytics_start_date():
 
 # ================= SMTP CONFIG =================
 
-EMAIL = "smurfgaming263@gmail.com"
-APP_PASSWORD = "smmrxyyrzktiwgnr"
+import os
 
+EMAIL = os.environ.get("SMTP_EMAIL", "")
+APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD", "")
 
 def send_email_otp(receiver, otp):
 
@@ -1283,8 +1293,8 @@ def analytics_summary():
     expense_ratio = (total_expenses / total_sales * 100) if total_sales else 0
     avg_order_value = (total_sales / total_orders) if total_orders else 0
     profit_margin = (total_profit / total_sales * 100) if total_sales else 0
-    revenue_chart = [float(row["revenue"] or 0) for row in trend_rows[-6:]]
-    revenue_labels = [row["month"] for row in trend_rows[-6:] if row["month"]]
+    revenue_chart = [float(row["revenue"] or 0) for row in trend_rows]
+    revenue_labels = [row["month"] for row in trend_rows if row["month"]]
 
     return jsonify({
         "total_sales": total_sales,
@@ -1693,5 +1703,11 @@ def inventory_value():
 
 # ================= RUN SERVER =================
 
+import os
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG", "True") == "True",
+        host="0.0.0.0",
+        port=5000
+    )
