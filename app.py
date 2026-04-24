@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
 
 from database.migration_production import hash_password, is_password_hash, run_production_migration
+from database.init_database import init_database
 from routes.import_routes import import_bp
 from services.analytics_service import apply_date_filter
 
@@ -35,12 +36,14 @@ DB = os.environ.get(
 
 app.config["DATABASE"] = DB
 
-# Run production migration at startup (required for Render /tmp SQLite)
 try:
-    logger.info("Running production migration at startup...")
+    logger.info("Initializing database schema...")
+    init_database(DB)
+
+    logger.info("Running production migration...")
     run_production_migration(DB, logger)
 except Exception as e:
-    logger.error(f"Migration failed: {e}")
+    logger.error(f"Database setup failed: {e}")
 
 app.register_blueprint(import_bp)
 # ================= DATABASE CONNECTION =================
@@ -89,9 +92,6 @@ def _password_matches(stored_password, provided_password):
 
 def _qparams(user_id, filter_params):
     return (user_id, *filter_params) if filter_params else (user_id,)
-
-
-run_production_migration(DB, logger)
 
 
 # ================= LOGIN REQUIRED DECORATOR =================
