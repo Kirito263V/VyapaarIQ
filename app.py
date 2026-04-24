@@ -30,7 +30,7 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 DB = os.environ.get(
     "DATABASE_PATH",
-    os.path.join(BASE_DIR, "instance", "vyapaariq.db")
+    "/tmp/vyapaariq.db"
 )
 
 app.config["DATABASE"] = DB

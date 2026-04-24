@@ -142,5 +142,10 @@ def run_production_migration(db_path, logger=None):
 
 
 if __name__ == "__main__":
+    import os
+
     logging.basicConfig(level=logging.INFO)
-    print(run_production_migration("vyapaariq.db"))
+
+    db_path = os.environ.get("DATABASE_PATH", "/tmp/vyapaariq.db")
+
+    print(run_production_migration(db_path))
