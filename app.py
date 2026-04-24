@@ -12,6 +12,7 @@ from werkzeug.security import check_password_hash
 
 from migration_production import hash_password, is_password_hash, run_production_migration
 from routes.import_routes import import_bp
+from services.analytics_service import apply_date_filter
 
 
 logging.basicConfig(level=logging.INFO)
@@ -70,6 +71,10 @@ def _password_matches(stored_password, provided_password):
         return False
 
 
+def _qparams(user_id, filter_params):
+    return (user_id, *filter_params) if filter_params else (user_id,)
+
+
 run_production_migration(DB, logger)
 
 
@@ -90,19 +95,23 @@ def login_required(func):
 
 
 def _get_analytics_start_date():
-    range_value = request.args.get("range", "180")
-    if range_value == "all":
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is None:
+        range_value = request.args.get("range", None)
+        if range_value == "all":
+            return None
+        try:
+            range_days = int(range_value) if range_value is not None else None
+        except (TypeError, ValueError):
+            range_days = None
+
+    if range_days is None or range_days == 0:
         return None
 
-    try:
-        days = int(range_value)
-    except (TypeError, ValueError):
-        days = 180
+    if range_days < 0:
+        return None
 
-    if days < 0:
-        days = 180
-
-    return (datetime.now().date() - timedelta(days=days)).isoformat()
+    return (datetime.now().date() - timedelta(days=range_days)).isoformat()
 
 
 # ================= SMTP CONFIG =================
@@ -1029,55 +1038,30 @@ def dashboard_summary():
 
     conn = get_db()
     user_id = _current_user_id()
-    start_date = _get_analytics_start_date()
-
-    sales_filter = ""
-    purchase_filter = ""
-    expense_filter = ""
-    sales_params = [user_id]
-    purchase_params = [user_id]
-    expense_params = [user_id]
-
-    if start_date:
-        sales_filter = " AND sale_date >= ?"
-        purchase_filter = " AND purchase_date >= ?"
-        expense_filter = " AND expense_date >= ?"
-        sales_params.append(start_date)
-        purchase_params.append(start_date)
-        expense_params.append(start_date)
 
     total_sales = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
         WHERE user_id = ?
-    """ + sales_filter, tuple(sales_params)).fetchone()[0]
+    """, (user_id,)).fetchone()[0]
 
     total_purchases = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
         WHERE user_id = ?
-    """ + purchase_filter, tuple(purchase_params)).fetchone()[0]
+    """, (user_id,)).fetchone()[0]
 
     total_expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """ + expense_filter, tuple(expense_params)).fetchone()[0]
+    """, (user_id,)).fetchone()[0]
 
-    if start_date:
-        total_customers = conn.execute("""
-            SELECT COUNT(DISTINCT customer_id)
-            FROM sales
-            WHERE user_id = ?
-            AND customer_id IS NOT NULL
-            AND sale_date >= ?
-        """, (user_id, start_date)).fetchone()[0]
-    else:
-        total_customers = conn.execute("""
-            SELECT COUNT(*)
-            FROM customers
-            WHERE user_id = ?
-        """, (user_id,)).fetchone()[0]
+    total_customers = conn.execute("""
+        SELECT COUNT(*)
+        FROM customers
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
 
     total_products = conn.execute("""
         SELECT COUNT(*)
@@ -1095,7 +1079,7 @@ def dashboard_summary():
         SELECT COUNT(*)
         FROM sales
         WHERE user_id = ?
-    """ + sales_filter, tuple(sales_params)).fetchone()[0]
+    """, (user_id,)).fetchone()[0]
 
     total_profit = conn.execute("""
         SELECT ROUND(COALESCE(SUM(
@@ -1109,7 +1093,7 @@ def dashboard_summary():
         ON p.id = si.product_id
         AND p.user_id = si.user_id
         WHERE si.user_id = ?
-    """ + (" AND s.sale_date >= ?" if start_date else ""), tuple(sales_params)).fetchone()[0]
+    """, (user_id,)).fetchone()[0]
 
     top_product_row = conn.execute("""
         SELECT
@@ -1124,23 +1108,21 @@ def dashboard_summary():
         ON p.id = si.product_id
         AND p.user_id = si.user_id
         WHERE si.user_id = ?
-    """ + (" AND s.sale_date >= ?" if start_date else "") + """
         GROUP BY p.id, p.name
         ORDER BY total_qty DESC, revenue DESC, p.name ASC
         LIMIT 1
-    """, tuple(sales_params)).fetchone()
+    """, (user_id,)).fetchone()
 
     trend_rows = conn.execute("""
         SELECT
-            strftime('%Y-%m', sale_date) AS month,
+            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
-    """ + (" AND sale_date >= ?" if start_date else "") + """
         GROUP BY month
         ORDER BY month
-    """, tuple(sales_params)).fetchall()
+    """, (user_id,)).fetchall()
 
     low_stock = conn.execute("""
         SELECT COUNT(*)
@@ -1173,7 +1155,158 @@ def dashboard_summary():
         "top_product_revenue": float(top_product_row["revenue"] or 0) if top_product_row else 0,
         "revenue_chart": revenue_chart,
         "revenue_chart_labels": revenue_labels,
+        "range_days": 0,
     })
+
+
+@app.route("/api/analytics-summary")
+@login_required
+def analytics_summary():
+
+    conn = get_db()
+    user_id = _current_user_id()
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
+
+    sales_filter, sales_params = apply_date_filter("sale_date", range_days, user_id)
+    purchase_filter, purchase_params = apply_date_filter("purchase_date", range_days, user_id)
+    expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
+    customer_filter, customer_params = apply_date_filter("sale_date", range_days, user_id)
+    order_filter, order_params = apply_date_filter("sale_date", range_days, user_id)
+    profit_filter, profit_params = apply_date_filter("s.sale_date", range_days, user_id)
+    top_product_filter, top_product_params = apply_date_filter("s.sale_date", range_days, user_id)
+    trend_filter, trend_params = apply_date_filter("sale_date", range_days, user_id)
+
+    total_sales = conn.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM sales
+        WHERE user_id = ?
+    """ + sales_filter, _qparams(user_id, sales_params)).fetchone()[0]
+
+    total_purchases = conn.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM purchases
+        WHERE user_id = ?
+    """ + purchase_filter, _qparams(user_id, purchase_params)).fetchone()[0]
+
+    total_expenses = conn.execute("""
+        SELECT COALESCE(SUM(amount), 0)
+        FROM expenses
+        WHERE user_id = ?
+    """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
+
+    if range_days:
+        total_customers = conn.execute("""
+            SELECT COUNT(DISTINCT customer_id)
+            FROM sales
+            WHERE user_id = ?
+            AND customer_id IS NOT NULL
+        """ + customer_filter, _qparams(user_id, customer_params)).fetchone()[0]
+    else:
+        total_customers = conn.execute("""
+            SELECT COUNT(*)
+            FROM customers
+            WHERE user_id = ?
+        """, (user_id,)).fetchone()[0]
+
+    total_products = conn.execute("""
+        SELECT COUNT(*)
+        FROM products
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
+
+    total_suppliers = conn.execute("""
+        SELECT COUNT(*)
+        FROM suppliers
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()[0]
+
+    total_orders = conn.execute("""
+        SELECT COUNT(*)
+        FROM sales
+        WHERE user_id = ?
+    """ + order_filter, _qparams(user_id, order_params)).fetchone()[0]
+
+    total_profit = conn.execute("""
+        SELECT ROUND(COALESCE(SUM(
+            COALESCE(si.subtotal, 0) - (COALESCE(si.quantity, 0) * COALESCE(p.cost_price, 0))
+        ), 0), 2)
+        FROM sale_items si
+        JOIN sales s
+        ON s.id = si.sale_id
+        AND s.user_id = si.user_id
+        JOIN products p
+        ON p.id = si.product_id
+        AND p.user_id = si.user_id
+        WHERE si.user_id = ?
+    """ + profit_filter, _qparams(user_id, profit_params)).fetchone()[0]
+
+    top_product_row = conn.execute("""
+        SELECT
+            p.name,
+            COALESCE(SUM(si.quantity), 0) AS total_qty,
+            ROUND(COALESCE(SUM(si.subtotal), 0), 2) AS revenue
+        FROM sale_items si
+        JOIN sales s
+        ON s.id = si.sale_id
+        AND s.user_id = si.user_id
+        JOIN products p
+        ON p.id = si.product_id
+        AND p.user_id = si.user_id
+        WHERE si.user_id = ?
+    """ + top_product_filter + """
+        GROUP BY p.id, p.name
+        ORDER BY total_qty DESC, revenue DESC, p.name ASC
+        LIMIT 1
+    """, _qparams(user_id, top_product_params)).fetchone()
+
+    trend_rows = conn.execute("""
+        SELECT
+            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
+            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+        FROM sales
+        WHERE user_id = ?
+        AND sale_date IS NOT NULL
+    """ + trend_filter + """
+        GROUP BY month
+        ORDER BY month
+    """, _qparams(user_id, trend_params)).fetchall()
+
+    low_stock = conn.execute("""
+        SELECT COUNT(*)
+        FROM products
+        WHERE user_id = ?
+        AND current_stock <= reorder_level
+    """, (user_id,)).fetchone()[0]
+
+    expense_ratio = (total_expenses / total_sales * 100) if total_sales else 0
+    avg_order_value = (total_sales / total_orders) if total_orders else 0
+    profit_margin = (total_profit / total_sales * 100) if total_sales else 0
+    revenue_chart = [float(row["revenue"] or 0) for row in trend_rows[-6:]]
+    revenue_labels = [row["month"] for row in trend_rows[-6:] if row["month"]]
+
+    return jsonify({
+        "total_sales": total_sales,
+        "total_purchases": total_purchases,
+        "total_expenses": total_expenses,
+        "total_customers": total_customers,
+        "total_products": total_products,
+        "total_suppliers": total_suppliers,
+        "total_orders": total_orders,
+        "total_profit": total_profit,
+        "profit_margin": round(profit_margin, 2),
+        "avg_order_value": avg_order_value,
+        "expense_ratio": round(expense_ratio, 2),
+        "low_stock_count": low_stock,
+        "top_product": top_product_row["name"] if top_product_row else "N/A",
+        "top_product_qty": int(top_product_row["total_qty"]) if top_product_row else 0,
+        "top_product_revenue": float(top_product_row["revenue"] or 0) if top_product_row else 0,
+        "revenue_chart": revenue_chart,
+        "revenue_chart_labels": revenue_labels,
+        "range_days": range_days or 0,
+    })
+
 
 
 @app.route("/api/sales-trend")
@@ -1183,24 +1316,26 @@ def sales_trend():
 
     conn = get_db()
     user_id = _current_user_id()
-    start_date = _get_analytics_start_date()
-    params = [user_id]
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
 
-    if start_date:
-        params.append(start_date)
+    sales_filter, sales_params = apply_date_filter("sale_date", range_days, user_id)
 
     rows = conn.execute("""
         SELECT
-            strftime('%Y-%m', sale_date) AS month,
+            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
-    """ + (" AND sale_date >= ?" if start_date else "") + """
+    """ + sales_filter + """
         GROUP BY month
         ORDER BY month
-    """, tuple(params)).fetchall()
+    """, _qparams(user_id, sales_params)).fetchall()
 
+    revenue_chart_labels = []
+    revenue_chart = []
     labels = []
     values = []
     rows_payload = []
@@ -1209,21 +1344,25 @@ def sales_trend():
         month_value = row["month"]
         if not month_value:
             continue
+        revenue = float(row["revenue"] or 0)
+        revenue_chart_labels.append(month_value)
+        revenue_chart.append(revenue)
         year, month = month_value.split("-")
         labels.append(datetime.strptime(f"{year}-{month}-01", "%Y-%m-%d").strftime("%b"))
-        revenue = float(row["revenue"] or 0)
         values.append(revenue)
         rows_payload.append({
             "month": month_value,
             "revenue": revenue
         })
 
-    target = max(values) if values else 0
+    print("Monthly revenue labels:", revenue_chart_labels)
+    print("Monthly revenue values:", revenue_chart)
 
     return jsonify({
         "labels": labels,
         "values": values,
-        "target": target,
+        "revenue_chart_labels": revenue_chart_labels,
+        "revenue_chart": revenue_chart,
         "rows": rows_payload
     })
 
@@ -1234,24 +1373,31 @@ def profit_analysis():
 
     conn = get_db()
     user_id = _current_user_id()
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
+
+    revenue_filter, revenue_params = apply_date_filter("sale_date", range_days, user_id)
+    purchase_filter, purchase_params = apply_date_filter("purchase_date", range_days, user_id)
+    expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
 
     revenue = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + revenue_filter, _qparams(user_id, revenue_params)).fetchone()[0]
 
     cost = conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + purchase_filter, _qparams(user_id, purchase_params)).fetchone()[0]
 
     expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
 
     profit = revenue - cost - expenses
     gross_margin = ((revenue - cost) / revenue * 100) if revenue else 0
@@ -1276,27 +1422,17 @@ def revenue_cost_trend():
 
     conn = get_db()
     user_id = _current_user_id()
-    start_date = _get_analytics_start_date()
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
 
-    sales_params = [user_id]
-    purchase_params = [user_id]
-    expense_params = [user_id]
-
-    sales_filter = ""
-    purchase_filter = ""
-    expense_filter = ""
-
-    if start_date:
-        sales_filter = " AND sale_date >= ?"
-        purchase_filter = " AND purchase_date >= ?"
-        expense_filter = " AND expense_date >= ?"
-        sales_params.append(start_date)
-        purchase_params.append(start_date)
-        expense_params.append(start_date)
+    sales_filter, sales_params = apply_date_filter("sale_date", range_days, user_id)
+    purchase_filter, purchase_params = apply_date_filter("purchase_date", range_days, user_id)
+    expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
 
     sales_rows = conn.execute("""
         SELECT
-            strftime('%Y-%m', sale_date) AS month,
+            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
@@ -1304,7 +1440,7 @@ def revenue_cost_trend():
     """ + sales_filter + """
         GROUP BY month
         ORDER BY month
-    """, tuple(sales_params)).fetchall()
+    """, _qparams(user_id, sales_params)).fetchall()
 
     if not sales_rows:
         return jsonify({
@@ -1315,7 +1451,7 @@ def revenue_cost_trend():
 
     purchase_rows = conn.execute("""
         SELECT
-            strftime('%Y-%m', purchase_date) AS month,
+            STRFTIME('%Y-%m', DATE(purchase_date)) AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS amount
         FROM purchases
         WHERE user_id = ?
@@ -1323,11 +1459,11 @@ def revenue_cost_trend():
     """ + purchase_filter + """
         GROUP BY month
         ORDER BY month
-    """, tuple(purchase_params)).fetchall()
+    """, _qparams(user_id, purchase_params)).fetchall()
 
     expense_rows = conn.execute("""
         SELECT
-            strftime('%Y-%m', expense_date) AS month,
+            STRFTIME('%Y-%m', DATE(expense_date)) AS month,
             ROUND(COALESCE(SUM(amount), 0), 2) AS amount
         FROM expenses
         WHERE user_id = ?
@@ -1335,7 +1471,7 @@ def revenue_cost_trend():
     """ + expense_filter + """
         GROUP BY month
         ORDER BY month
-    """, tuple(expense_params)).fetchall()
+    """, _qparams(user_id, expense_params)).fetchall()
 
     revenue_by_month = {
         row["month"]: float(row["revenue"] or 0)
@@ -1374,11 +1510,11 @@ def customer_insights():
 
     conn = get_db()
     user_id = _current_user_id()
-    start_date = _get_analytics_start_date()
-    params = [user_id]
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
 
-    if start_date:
-        params.append(start_date)
+    sales_filter, sales_params = apply_date_filter("sales.sale_date", range_days, user_id)
 
     rows = conn.execute("""
         SELECT
@@ -1389,11 +1525,11 @@ def customer_insights():
         ON customers.id = sales.customer_id
         AND customers.user_id = sales.user_id
         WHERE sales.user_id = ?
-    """ + (" AND sales.sale_date >= ?" if start_date else "") + """
+    """ + sales_filter + """
         GROUP BY customers.id, customers.name
         ORDER BY total DESC
         LIMIT 5
-    """, tuple(params)).fetchall()
+    """, _qparams(user_id, sales_params)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
@@ -1430,31 +1566,29 @@ def expense_breakdown():
 
     conn = get_db()
     user_id = _current_user_id()
-    start_date = _get_analytics_start_date()
-    expense_filter = ""
-    expense_params = [user_id]
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
 
-    if start_date:
-        expense_filter = " AND expense_date >= ?"
-        expense_params.append(start_date)
+    expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
 
     total_expenses = conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """ + expense_filter, tuple(expense_params)).fetchone()[0]
+    """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
 
     current_month = conn.execute("""
-        SELECT strftime('%Y-%m', MAX(expense_date))
+        SELECT STRFTIME('%Y-%m', MAX(DATE(expense_date)))
         FROM expenses
         WHERE user_id = ?
         AND expense_date IS NOT NULL
-    """ + expense_filter, tuple(expense_params)).fetchone()[0]
+    """ + expense_filter, (user_id,)).fetchone()[0]
 
     previous_month = None
     if current_month:
         previous_month = conn.execute("""
-            SELECT strftime('%Y-%m', date(?, 'start of month', '-1 month'))
+            SELECT STRFTIME('%Y-%m', date(?, 'start of month', '-1 month'))
         """, (f"{current_month}-01",)).fetchone()[0]
 
     rows = conn.execute("""
@@ -1466,7 +1600,7 @@ def expense_breakdown():
     """ + expense_filter + """
         GROUP BY category
         ORDER BY amount DESC
-    """, tuple(expense_params)).fetchall()
+    """, (user_id,)).fetchall()
 
     result = []
     for row in rows:
@@ -1477,24 +1611,18 @@ def expense_breakdown():
         previous_amount = 0
 
         if current_month:
-            current_params = [user_id, row["category"], current_month]
-            if start_date:
-                current_params.append(start_date)
             current_amount = conn.execute("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category IS ? AND strftime('%Y-%m', expense_date) = ?
-            """ + (" AND expense_date >= ?" if start_date else ""), tuple(current_params)).fetchone()[0] or 0
+                WHERE user_id = ? AND category IS ? AND STRFTIME('%Y-%m', DATE(expense_date)) = ?
+            """ + expense_filter, (user_id, row["category"], current_month)).fetchone()[0] or 0
 
         if previous_month:
-            previous_params = [user_id, row["category"], previous_month]
-            if start_date:
-                previous_params.append(start_date)
             previous_amount = conn.execute("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category IS ? AND strftime('%Y-%m', expense_date) = ?
-            """ + (" AND expense_date >= ?" if start_date else ""), tuple(previous_params)).fetchone()[0] or 0
+                WHERE user_id = ? AND category IS ? AND STRFTIME('%Y-%m', DATE(expense_date)) = ?
+            """ + expense_filter, (user_id, row["category"], previous_month)).fetchone()[0] or 0
 
         if previous_amount:
             change = ((current_amount - previous_amount) / previous_amount) * 100
@@ -1519,11 +1647,11 @@ def top_products():
 
     conn = get_db()
     user_id = _current_user_id()
-    start_date = _get_analytics_start_date()
-    params = [user_id]
+    range_days = request.args.get("range_days", default=None, type=int)
+    if range_days is not None and range_days < 0:
+        range_days = None
 
-    if start_date:
-        params.append(start_date)
+    sales_filter, sales_params = apply_date_filter("sales.sale_date", range_days, user_id)
 
     rows = conn.execute("""
         SELECT
@@ -1537,11 +1665,11 @@ def top_products():
         ON products.id = sale_items.product_id
         AND products.user_id = sale_items.user_id
         WHERE sale_items.user_id = ?
-    """ + (" AND sales.sale_date >= ?" if start_date else "") + """
+    """ + sales_filter + """
         GROUP BY products.id, products.name
         ORDER BY revenue DESC
         LIMIT 5
-    """, tuple(params)).fetchall()
+    """, _qparams(user_id, sales_params)).fetchall()
 
     return jsonify([dict(row) for row in rows])
 

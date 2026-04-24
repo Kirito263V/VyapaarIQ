@@ -2,6 +2,7 @@ import logging
 
 import pandas as pd
 
+from services.date_utils import normalize_date
 from services.normalization_service import DATASET_COLUMNS, FK_RESOLUTION_MAP, OPTIONAL_DEFAULT_FIELDS, normalize_columns, normalize_row
 
 
@@ -238,6 +239,12 @@ def execute_import(df, dataset, conn, user_id, skip_invalid=True):
         for index, raw_row in working_df.iterrows():
             row_number = int(index) + 2
             
+            raw_dict = raw_row.to_dict() if hasattr(raw_row, "to_dict") else dict(raw_row)
+            for date_key in ("sale_date", "purchase_date", "expense_date"):
+                if date_key in raw_dict:
+                    raw_dict[date_key] = normalize_date(raw_dict.get(date_key))
+            raw_row = pd.Series(raw_dict)
+
             # Pre-processing for purchase_items: resolve product_name and validate purchase_id BEFORE normalization
             lookup_errors = []
             if dataset == "purchase_items":

@@ -382,14 +382,14 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   <div class="filter-bar">
     <span class="filter-label">Period</span>
     <div class="filter-pills">
-      <button class="fpill" data-range="30" onclick="setRange(this,'30')">Last 30 Days</button>
-      <button class="fpill" data-range="90" onclick="setRange(this,'90')">Last 3 Months</button>
-      <button class="fpill active" data-range="180" onclick="setRange(this,'180')">Last 6 Months</button>
-      <button class="fpill" data-range="365" onclick="setRange(this,'365')">Last 12 Months</button>
-      <button class="fpill" data-range="all" onclick="setRange(this,'all')">All Time</button>
+        <button class="fpill" data-range="30" onclick="setRange(30)">Last 30 Days</button>
+      <button class="fpill" data-range="90" onclick="setRange(90)">Last 3 Months</button>
+      <button class="fpill active" data-range="180" onclick="setRange(180)">Last 6 Months</button>
+      <button class="fpill" data-range="365" onclick="setRange(365)">Last 12 Months</button>
+      <button class="fpill" data-range="0" onclick="setRange(0)">All Time</button>
     </div>
     <div class="filter-sep"></div>
-    <span class="filter-label" id="filterStatus">Showing last 6 months</span>
+    <span class="filter-label" id="periodLabel">Showing last 6 months</span>
     <div class="filter-right">
       <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">
         <span class="refresh-icon">↻</span> Refresh
@@ -649,7 +649,8 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
    ===================================================================== */
 
 const $ = id => document.getElementById(id);
-let currentRange = '180';
+const storedRange = localStorage.getItem('analyticsRange');
+let selectedRange = storedRange !== null && !Number.isNaN(Number(storedRange)) ? Number(storedRange) : 180;
 let modalChartInstance = null;
 let chartInstances = {};
 
@@ -663,7 +664,10 @@ const fmtK = v => {
   return fmtINR(n);
 };
 const fmtPct = v => (Number(v||0) >= 0 ? '+' : '') + Number(v||0).toFixed(1) + '%';
-const apiUrl = path => `${path}?range=${currentRange}`;
+const apiUrl = path => {
+  if (selectedRange === 0) return path;
+  return `${path}?range_days=${selectedRange}`;
+};
 
 async function fetchJSON(url) {
   const r = await fetch(url);
@@ -696,14 +700,38 @@ function toggleSidebar() { $('sidebar').classList.toggle('open'); $('overlay').c
 function closeSidebar() { if(window.innerWidth <= 768) { $('sidebar').classList.remove('open'); $('overlay').classList.remove('show'); } }
 
 /* ===== FILTER ===== */
-function setRange(btn, range) {
+function setRange(days) {
   document.querySelectorAll('.fpill').forEach(p => p.classList.remove('active'));
-  btn.classList.add('active');
-  currentRange = range;
-  const labels = {'30':'30 days','90':'3 months','180':'6 months','365':'12 months','all':'all time'};
-  $('filterStatus').textContent = 'Showing last ' + (labels[range]||range);
-  if(range === 'all') $('filterStatus').textContent = 'Showing all time';
-  refreshAll();
+  const activeButton = document.querySelector(`.fpill[data-range='${days}']`);
+  if (activeButton) activeButton.classList.add('active');
+  selectedRange = days;
+  localStorage.setItem('analyticsRange', String(days));
+  updatePeriodLabel();
+  reloadAnalytics();
+}
+
+function getPeriodSuffix() {
+  if (selectedRange === 30) return '30 days';
+  if (selectedRange === 90) return '3 months';
+  if (selectedRange === 180) return '6 months';
+  if (selectedRange === 365) return '12 months';
+  return 'all time';
+}
+
+function updatePeriodLabel() {
+  let label = 'Showing all time';
+  if (selectedRange === 30) label = 'Showing last 30 days';
+  if (selectedRange === 90) label = 'Showing last 3 months';
+  if (selectedRange === 180) label = 'Showing last 6 months';
+  if (selectedRange === 365) label = 'Showing last 12 months';
+  const el = document.getElementById('periodLabel');
+  if (el) el.innerText = label;
+}
+
+function updateActiveRangeButton() {
+  document.querySelectorAll('.fpill').forEach(p => p.classList.remove('active'));
+  const activeButton = document.querySelector(`.fpill[data-range='${selectedRange}']`);
+  if (activeButton) activeButton.classList.add('active');
 }
 
 /* ===== CHART FACTORY ===== */
@@ -756,8 +784,8 @@ function setKPI(id, val, ch, cls) {
 async function loadKPIs() {
   try {
     const [sum, inv] = await Promise.all([
-      fetchJSON(apiUrl('/api/dashboard-summary')),
-      fetchJSON('/api/inventory-insights')
+      fetchJSON(apiUrl('/api/analytics-summary')),
+      fetchJSON(apiUrl('/api/inventory-insights'))
     ]);
     const rev = Number(sum.total_sales||0);
     const purch = Number(sum.total_purchases||0);
@@ -765,7 +793,7 @@ async function loadKPIs() {
     const profit = rev - purch - exp;
     const invVal = inv.reduce((s,r) => s + Number(r.current_stock||0)*Number(r.cost_price||0), 0);
 
-    setKPI('k-revenue', fmtK(rev), `${sum.total_orders||0} orders · all time`, 'up');
+    setKPI('k-revenue', fmtK(rev), `${sum.total_orders||0} orders · ${getPeriodSuffix()}`, 'up');
     setKPI('k-profit', fmtK(profit), profit >= 0 ? '↑ Net profit' : '↓ Net loss', profit >= 0 ? 'up' : 'down');
     setKPI('k-aov', fmtINR(sum.avg_order_value||0), `Per invoice avg`, 'neu');
     setKPI('k-inventory', fmtK(invVal), `${inv.length} products`, 'neu');
@@ -784,6 +812,46 @@ async function loadKPIs() {
     setKPI('k-stockrisk', '3', '3 below threshold', 'warn');
     generateInsights({total_sales:428600,total_expenses:38200,expense_ratio:8.9,low_stock_count:3,top_product:'Basmati Rice 5kg'}, [], 68420, 120000);
   }
+}
+
+function loadDashboardSummary() {
+  return loadKPIs();
+}
+
+function loadRevenueTrend() {
+  return loadSalesTrend();
+}
+
+function loadExpenseDistribution() {
+  return loadExpenseBreakdown();
+}
+
+function loadProfitBreakdown() {
+  return loadProfitAnalysis();
+}
+
+function loadInventorySummary() {
+  return loadInventory();
+}
+
+async function reloadAnalytics() {
+  const btn = $('refreshBtn');
+  if(btn) btn.classList.add('refreshing');
+  toast('Refreshing all analytics…','inf',2000);
+  updateActiveRangeButton();
+  updatePeriodLabel();
+  applyChartDefaults();
+  await Promise.allSettled([
+    loadDashboardSummary(),
+    loadRevenueTrend(),
+    loadTopProducts(),
+    loadProfitBreakdown(),
+    loadCustomerInsights(),
+    loadExpenseDistribution(),
+    loadInventorySummary(),
+  ]);
+  if(btn) { setTimeout(() => btn.classList.remove('refreshing'), 500); }
+  toast('Analytics refreshed','suc');
 }
 
 /* ===== SMART INSIGHTS ===== */
@@ -822,7 +890,7 @@ function generateInsights(sum, inv, profit, invVal) {
 /* ===== SALES TREND CHART ===== */
 async function loadSalesTrend() {
   try {
-    const data = await fetchJSON(apiUrl('/api/sales-trend'));
+    const data = await fetchJSON(apiUrl('/api/monthly-sales-trend'));
     renderSalesTrend(data);
   } catch(e) {
     renderSalesTrend({ labels:['Oct','Nov','Dec','Jan','Feb','Mar'], values:[62000,78000,95000,71000,88000,100000], target:95000 });
@@ -942,7 +1010,7 @@ function renderTopProducts(rows) {
 /* ===== PROFIT ANALYSIS ===== */
 async function loadProfitAnalysis() {
   try {
-    renderProfitAnalysis(await fetchJSON('/api/profit-analysis'));
+    renderProfitAnalysis(await fetchJSON(apiUrl('/api/profit-analysis')));
   } catch(e) {
     renderProfitAnalysis({ revenue:0, cogs:0, expenses:0, profit:0, gross_margin:0, net_margin:0, roi:0 });
   }
@@ -1182,7 +1250,7 @@ function renderExpenseBreakdown(rows) {
 /* ===== INVENTORY ===== */
 async function loadInventory() {
   try {
-    renderInventory(await fetchJSON('/api/inventory-insights'));
+    renderInventory(await fetchJSON(apiUrl('/api/inventory-insights')));
   } catch(e) {
     renderInventory([
       {name:'Basmati Rice 5kg', category:'Grocery', current_stock:120, reorder_level:20, cost_price:280},
@@ -1298,35 +1366,16 @@ function exportData() {
 
 /* ===== REFRESH ===== */
 async function refreshAll() {
-  const btn = $('refreshBtn');
-  if(btn) btn.classList.add('refreshing');
-  toast('Refreshing all analytics…','inf',2000);
-  applyChartDefaults();
-  await Promise.allSettled([
-    loadKPIs(),
-    loadSalesTrend(),
-    loadTopProducts(),
-    loadProfitAnalysis(),
-    loadCustomerInsights(),
-    loadExpenseBreakdown(),
-    loadInventory(),
-  ]);
-  if(btn) { setTimeout(() => btn.classList.remove('refreshing'), 500); }
-  toast('Analytics refreshed','suc');
+  await reloadAnalytics();
 }
 
 /* ===== INIT ===== */
-(function init() {
-  applyChartDefaults();
-  loadKPIs();
-  loadSalesTrend();
-  loadTopProducts();
-  loadProfitAnalysis();
-  loadCustomerInsights();
-  loadExpenseBreakdown();
-  loadInventory();
-  setInterval(() => { loadKPIs(); loadSalesTrend(); }, 60000);
-})();
+document.addEventListener('DOMContentLoaded', function() {
+  updateActiveRangeButton();
+  updatePeriodLabel();
+  reloadAnalytics();
+  setInterval(() => { reloadAnalytics(); }, 60000);
+});
 </script>
 </body>
 </html>
