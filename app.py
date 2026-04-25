@@ -47,7 +47,9 @@ try:
         reset_database(DB)
 
     logger.info("Running production migration...")
-    run_production_migration(DB, logger)
+
+    if DB_TYPE == "sqlite":
+        run_production_migration(DB, logger)
 
 except Exception as e:
     logger.error(f"Database setup failed: {e}")
@@ -55,13 +57,13 @@ except Exception as e:
 app.register_blueprint(import_bp)
 # ================= DATABASE CONNECTION =================
 
-import psycopg2
+import psycopg
 import sqlite3
 
 def get_db():
     if DB_TYPE == "postgres":
-        conn = psycopg2.connect(DATABASE_URL)
-        return conn
+        conn = psycopg.connect(DATABASE_URL)
+        
     else:
         conn = sqlite3.connect(DB)
         conn.row_factory = sqlite3.Row
