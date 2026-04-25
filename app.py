@@ -236,18 +236,18 @@ def send_otp():
     email = data["email"]
     phone = data["phone"]
     password = data["password"]
+
     hashed_password = hash_password(password)
 
     otp = str(random.randint(100000, 999999))
-
     expires = datetime.now() + timedelta(minutes=5)
 
     conn = get_db()
 
     conn.execute("""
         INSERT INTO otp_verification
-        (name,email,phone,password,otp_code,otp_expires_at)
-        VALUES(?,?,?,?,?,?)
+        (name, email, phone, password, otp_code, otp_expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (name, email, phone, hashed_password, otp, expires))
 
     conn.commit()
