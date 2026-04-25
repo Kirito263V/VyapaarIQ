@@ -53,10 +53,8 @@ try:
     if DB_TYPE == "sqlite":
         reset_database(DB)
 
-    logger.info("Running production migration...")
-
-    if DB_TYPE == "sqlite":
-        run_production_migration(DB, logger)
+    logger.info("Running production migration for %s database...", DB_TYPE)
+    run_production_migration(DB, logger)
 
 except Exception as e:
     logger.error(f"Database setup failed: {e}")

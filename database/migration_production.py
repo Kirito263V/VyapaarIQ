@@ -1,4 +1,5 @@
 import logging
+import os
 import sqlite3
 from typing import Dict, List
 
@@ -65,7 +66,10 @@ def _table_exists(conn, table_name):
 
 
 def _is_postgres_db(db_path):
-    return isinstance(db_path, str) and db_path.startswith(("postgres://", "postgresql://"))
+    if not isinstance(db_path, str):
+        return False
+    db_path = db_path.strip().lower()
+    return db_path.startswith(("postgres://", "postgresql://"))
 
 
 def _is_postgres_conn(conn):
@@ -152,10 +156,14 @@ def _migrate_passwords_in_table(conn, table_name, logger):
 
 
 def _get_migration_connection(db_path):
+    if not db_path:
+        db_path = os.environ.get("DATABASE_URL")
+
     if _is_postgres_db(db_path):
         if psycopg is None:
             raise RuntimeError("psycopg3 is required for PostgreSQL migration")
         return psycopg.connect(db_path)
+
     return sqlite3.connect(db_path, timeout=10, check_same_thread=False)
 
 
