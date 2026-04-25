@@ -1,4 +1,7 @@
-import os
+from pathlib import Path
+
+file_path = Path(__file__).resolve().parent / "init_database.py"
+file_content = '''import os
 import sqlite3
 from pathlib import Path
 
@@ -244,3 +247,7 @@ def reset_database(db_path=DB_PATH):
 if __name__ == '__main__':
     created_db = reset_database()
     print(f"Database recreated at: {created_db}")
+'''
+
+file_path.write_text(file_content, encoding='utf-8')
+"

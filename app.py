@@ -19,7 +19,7 @@ from database.db_utils import (
     sql_month_group_by,
 )
 from database.migration_production import hash_password, is_password_hash, run_production_migration
-from database.init_database import reset_database
+from database.init_database import reset_database, ensure_database_schema
 from routes.import_routes import import_bp
 from services.analytics_service import apply_date_filter
 
@@ -52,6 +52,8 @@ try:
 
     if DB_TYPE == "sqlite":
         reset_database(DB)
+    else:
+        ensure_database_schema(DB)
 
     logger.info("Running production migration for %s database...", DB_TYPE)
     run_production_migration(DB, logger)
