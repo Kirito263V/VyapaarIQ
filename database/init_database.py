@@ -193,7 +193,16 @@ def _create_database_schema(conn, postgres=False):
     );
     """
 
-    conn.executescript(schema_sql)
+    if postgres:
+        with conn.cursor() as cursor:
+            for statement in schema_sql.strip().split(";"):
+                statement = statement.strip()
+                if not statement:
+                    continue
+                cursor.execute(statement)
+    else:
+        conn.executescript(schema_sql)
+
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_user_date ON sales(user_id, sale_date);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON expenses(user_id, expense_date);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id);")
