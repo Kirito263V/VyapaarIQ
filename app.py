@@ -48,6 +48,7 @@ try:
 
     logger.info("Running production migration...")
     run_production_migration(DB, logger)
+
 except Exception as e:
     logger.error(f"Database setup failed: {e}")
 
