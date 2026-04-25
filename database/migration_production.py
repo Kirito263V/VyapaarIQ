@@ -167,6 +167,17 @@ def _get_migration_connection(db_path):
     return sqlite3.connect(db_path, timeout=10, check_same_thread=False)
 
 
+def _pg_has_primary_key(conn, table_name):
+    """Check if a PostgreSQL table already has a primary key constraint."""
+    row = conn.execute(
+        "SELECT COUNT(*) FROM information_schema.table_constraints "
+        "WHERE table_name = %s AND constraint_type = 'PRIMARY KEY' "
+        "AND table_schema = current_schema()",
+        (table_name,),
+    ).fetchone()
+    return row[0] > 0
+
+
 def ensure_users_table(conn, logger):
     if _is_postgres_conn(conn):
         conn.execute(
@@ -181,6 +192,10 @@ def ensure_users_table(conn, logger):
             )
             """
         )
+        # Fix existing users table that was created without PRIMARY KEY
+        if _table_exists(conn, "users") and not _pg_has_primary_key(conn, "users"):
+            logger.info("Adding missing PRIMARY KEY to users.id on PostgreSQL")
+            conn.execute("ALTER TABLE users ADD PRIMARY KEY (id)")
     else:
         conn.execute(
             """

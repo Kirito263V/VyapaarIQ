@@ -22,7 +22,7 @@ def _is_postgres_db(db_path):
 
 def _create_database_schema(conn, postgres=False):
     if postgres:
-        id_type = "SERIAL"
+        id_type = "SERIAL PRIMARY KEY"
         expires_type = "TIMESTAMP"
     else:
         id_type = "INTEGER PRIMARY KEY AUTOINCREMENT"
