@@ -7,3 +7,17 @@ instance/
 .ipynb_checkpoints/
 .DS_Store
 .vscode/
+*.db
+*.sqlite
+*.sqlite3
+logs/
+*.log
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+*.pyo
+*.pyd
+docs/*.backup*

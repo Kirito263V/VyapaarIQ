@@ -9,6 +9,15 @@ except ImportError:
     dict_row = None
 
 
+def _normalize_pg_url(db_url):
+    """
+    Render issues postgres:// URLs. psycopg3 requires postgresql://.
+    """
+    if isinstance(db_url, str) and db_url.startswith("postgres://"):
+        return db_url.replace("postgres://", "postgresql://", 1)
+    return db_url
+
+
 def is_postgres_url(db_url=None):
     if not db_url:
         db_url = os.environ.get("DATABASE_URL")
@@ -38,6 +47,9 @@ class PostgresConnection:
     def commit(self):
         self._conn.commit()
 
+    def rollback(self):
+        self._conn.rollback()
+
     def close(self):
         self._conn.close()
 
@@ -58,10 +70,14 @@ def get_db(db_url=None):
     if is_postgres_url(db_url):
         if psycopg is None:
             raise ImportError("psycopg3 is required for PostgreSQL connections.")
+        # FIX: normalize postgres:// → postgresql:// before connecting
+        db_url = _normalize_pg_url(db_url)
         conn = psycopg.connect(db_url, row_factory=dict_row)
         return PostgresConnection(conn)
 
-    default_sqlite_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "instance", "vyapaariq.db"))
+    default_sqlite_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "instance", "vyapaariq.db")
+    )
     sqlite_path = db_url or os.environ.get("SQLITE_DB_PATH", default_sqlite_path)
     conn = sqlite3.connect(sqlite_path, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -70,10 +86,7 @@ def get_db(db_url=None):
 
 def execute_query(conn, query, params=None, fetchone=False, fetchall=False, commit=False):
     params = params if params is not None else ()
-    if get_db_type() == "postgres" and isinstance(conn, PostgresConnection):
-        cursor = conn.execute(query, params)
-    else:
-        cursor = conn.execute(query, params)
+    cursor = conn.execute(query, params)
 
     if commit:
         conn.commit()

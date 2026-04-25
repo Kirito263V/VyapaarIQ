@@ -72,6 +72,15 @@ def _is_postgres_db(db_path):
     return db_path.startswith(("postgres://", "postgresql://"))
 
 
+def _normalize_pg_url(db_path):
+    """
+    Render issues postgres:// URLs. psycopg3 requires postgresql://.
+    """
+    if isinstance(db_path, str) and db_path.startswith("postgres://"):
+        return db_path.replace("postgres://", "postgresql://", 1)
+    return db_path
+
+
 def _is_postgres_conn(conn):
     return psycopg is not None and not isinstance(conn, sqlite3.Connection)
 
@@ -162,6 +171,8 @@ def _get_migration_connection(db_path):
     if _is_postgres_db(db_path):
         if psycopg is None:
             raise RuntimeError("psycopg3 is required for PostgreSQL migration")
+        # FIX: normalize postgres:// → postgresql:// before connecting
+        db_path = _normalize_pg_url(db_path)
         return psycopg.connect(db_path)
 
     return sqlite3.connect(db_path, timeout=10, check_same_thread=False)
@@ -251,9 +262,22 @@ def run_production_migration(db_path, logger=None):
     conn = _get_migration_connection(db_path)
 
     try:
-        schema_result = _ensure_user_id_schema(conn, active_logger)
+        # -----------------------------------------------------------------
+        # FIX: Correct execution order.
+        #
+        # Previously _ensure_user_id_schema ran BEFORE ensure_users_table,
+        # meaning on a fresh PostgreSQL database the users table did not yet
+        # exist when child-table FK columns were being added/checked.
+        #
+        # Correct order:
+        #   1. Ensure users table exists  ← parent table must come first
+        #   2. Ensure otp_verification exists
+        #   3. Run user_id schema migration on all other tables
+        #   4. Migrate plaintext passwords
+        # -----------------------------------------------------------------
         ensure_users_table(conn, active_logger)
         ensure_otp_verification_table(conn, active_logger)
+        schema_result = _ensure_user_id_schema(conn, active_logger)
         migrated_user_passwords = _migrate_passwords_in_table(conn, "users", active_logger)
         migrated_otp_passwords = _migrate_passwords_in_table(conn, "otp_verification", active_logger)
         conn.commit()
@@ -265,10 +289,11 @@ def run_production_migration(db_path, logger=None):
         }
         active_logger.info("Production migration completed: %s", result)
         return result
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
-
-
 
 
 if __name__ == "__main__":
@@ -276,6 +301,6 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
 
-    db_path = os.environ.get("DATABASE_PATH", "/tmp/vyapaariq.db")
+    db_path = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PATH", "/tmp/vyapaariq.db")
 
     print(run_production_migration(db_path))

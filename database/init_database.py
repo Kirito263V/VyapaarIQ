@@ -17,6 +17,38 @@ def _is_postgres_db(db_path):
     return db_path.startswith(("postgres://", "postgresql://"))
 
 
+def _normalize_pg_url(db_path):
+    """
+    Render issues postgres:// URLs. psycopg3 requires postgresql://.
+    """
+    if isinstance(db_path, str) and db_path.startswith("postgres://"):
+        return db_path.replace("postgres://", "postgresql://", 1)
+    return db_path
+
+
+# ---------------------------------------------------------------------------
+# Index DDL kept separate so we can execute through the correct API for each
+# database backend. psycopg3 raw connections have NO .execute() method –
+# every statement must go through a cursor.
+# ---------------------------------------------------------------------------
+INDEX_STATEMENTS = [
+    "CREATE INDEX IF NOT EXISTS idx_sales_user_date ON sales(user_id, sale_date)",
+    "CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON expenses(user_id, expense_date)",
+    "CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_categories_user_name ON categories(user_id, name)",
+    "CREATE INDEX IF NOT EXISTS idx_suppliers_user_name ON suppliers(user_id, name)",
+    "CREATE INDEX IF NOT EXISTS idx_customers_user_name ON customers(user_id, name)",
+    "CREATE INDEX IF NOT EXISTS idx_products_user_name ON products(user_id, name)",
+    "CREATE INDEX IF NOT EXISTS idx_sale_items_user_sale ON sale_items(user_id, sale_id)",
+    "CREATE INDEX IF NOT EXISTS idx_purchase_items_user_purchase ON purchase_items(user_id, purchase_id)",
+    "CREATE INDEX IF NOT EXISTS idx_stock_alerts_user_product ON stock_alerts(user_id, product_id)",
+    # Partial unique index – valid in both SQLite and PostgreSQL
+    # TRIM() removed: not a valid expression in a PostgreSQL partial index predicate
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_products_user_sku "
+    "ON products(user_id, sku) WHERE sku IS NOT NULL AND sku <> ''",
+]
+
+
 def _create_database_schema(conn, postgres=False):
     if postgres:
         id_type = "SERIAL PRIMARY KEY"
@@ -29,7 +61,6 @@ def _create_database_schema(conn, postgres=False):
     CREATE TABLE IF NOT EXISTS users (
         id {id_type},
         name TEXT NOT NULL,
-        username TEXT UNIQUE,
         email TEXT UNIQUE NOT NULL,
         phone TEXT,
         password TEXT NOT NULL,
@@ -194,32 +225,31 @@ def _create_database_schema(conn, postgres=False):
     """
 
     if postgres:
+        # -----------------------------------------------------------------
+        # FIX: psycopg3 raw connections have NO .execute() method.
+        #      executescript() is SQLite-only and crashes on psycopg3.
+        #      ALL statements must go through cursor.execute().
+        # -----------------------------------------------------------------
         with conn.cursor() as cursor:
             for statement in schema_sql.strip().split(";"):
                 statement = statement.strip()
                 if not statement:
                     continue
                 cursor.execute(statement)
+            for index_sql in INDEX_STATEMENTS:
+                cursor.execute(index_sql)
     else:
         conn.executescript(schema_sql)
-
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_sales_user_date ON sales(user_id, sale_date);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON expenses(user_id, expense_date);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_categories_user_name ON categories(user_id, name);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_suppliers_user_name ON suppliers(user_id, name);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_customers_user_name ON customers(user_id, name);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_products_user_name ON products(user_id, name);")
-    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_products_user_sku ON products(user_id, sku) WHERE sku IS NOT NULL AND TRIM(sku) <> '';")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_sale_items_user_sale ON sale_items(user_id, sale_id);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_purchase_items_user_purchase ON purchase_items(user_id, purchase_id);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_alerts_user_product ON stock_alerts(user_id, product_id);")
+        for index_sql in INDEX_STATEMENTS:
+            conn.execute(index_sql)
 
 
 def ensure_database_schema(db_path=DB_PATH):
     if _is_postgres_db(db_path):
         if psycopg is None:
             raise RuntimeError("psycopg3 is required for PostgreSQL schema initialization")
+        # FIX: normalize postgres:// → postgresql:// before connecting
+        db_path = _normalize_pg_url(db_path)
         conn = psycopg.connect(db_path)
         try:
             _create_database_schema(conn, postgres=True)
