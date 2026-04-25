@@ -29,11 +29,11 @@ app.permanent_session_lifetime = timedelta(hours=2)
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL:
     DB_TYPE = "postgres"
+    DB = DATABASE_URL
 else:
     DB_TYPE = "sqlite"
     DB = "/tmp/vyapaariq.db"
@@ -42,7 +42,9 @@ app.config["DATABASE"] = DB
 
 try:
     logger.info("Initializing database schema...")
-    reset_database(DB)
+
+    if DB_TYPE == "sqlite":
+        reset_database(DB)
 
     logger.info("Running production migration...")
     run_production_migration(DB, logger)
