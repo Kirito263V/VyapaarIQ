@@ -29,10 +29,14 @@ app.permanent_session_lifetime = timedelta(hours=2)
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-DB = os.environ.get(
-    "DATABASE_PATH",
-    "/tmp/vyapaariq.db"
-)
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
+    DB_TYPE = "postgres"
+else:
+    DB_TYPE = "sqlite"
+    DB = "/tmp/vyapaariq.db"
 
 app.config["DATABASE"] = DB
 
@@ -48,10 +52,17 @@ except Exception as e:
 app.register_blueprint(import_bp)
 # ================= DATABASE CONNECTION =================
 
+import psycopg2
+import sqlite3
+
 def get_db():
-    conn = sqlite3.connect(DB, timeout=10, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if DB_TYPE == "postgres":
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        conn = sqlite3.connect(DB)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 
 def _auth_required_response():
