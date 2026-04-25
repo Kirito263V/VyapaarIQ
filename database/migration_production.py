@@ -2,6 +2,11 @@ import logging
 import sqlite3
 from typing import Dict, List
 
+try:
+    import psycopg
+except ImportError:
+    psycopg = None
+
 from werkzeug.security import generate_password_hash
 
 
@@ -44,6 +49,14 @@ def hash_password(password):
 
 
 def _table_exists(conn, table_name):
+    if _is_postgres_conn(conn):
+        row = conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = current_schema() AND table_name = %s",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
         (table_name,),
@@ -51,7 +64,24 @@ def _table_exists(conn, table_name):
     return row is not None
 
 
+def _is_postgres_db(db_path):
+    return isinstance(db_path, str) and db_path.startswith(("postgres://", "postgresql://"))
+
+
+def _is_postgres_conn(conn):
+    return psycopg is not None and not isinstance(conn, sqlite3.Connection)
+
+
 def _column_names(conn, table_name):
+    if _is_postgres_conn(conn):
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = %s AND table_schema = current_schema() "
+            "ORDER BY ordinal_position",
+            (table_name,),
+        ).fetchall()
+        return [row[0] if not isinstance(row, dict) else row["column_name"] for row in rows]
+
     return [row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
 
 
@@ -103,13 +133,14 @@ def _migrate_passwords_in_table(conn, table_name, logger):
     if "password" not in columns:
         return 0
 
+    placeholder = "%s" if _is_postgres_conn(conn) else "?"
     updated_rows = 0
     rows = conn.execute(f"SELECT id, password FROM {table_name}").fetchall()
     for row_id, password_value in rows:
         if not password_value or is_password_hash(password_value):
             continue
         conn.execute(
-            f"UPDATE {table_name} SET password = ? WHERE id = ?",
+            f"UPDATE {table_name} SET password = {placeholder} WHERE id = {placeholder}",
             (hash_password(password_value), row_id),
         )
         updated_rows += 1
@@ -120,12 +151,55 @@ def _migrate_passwords_in_table(conn, table_name, logger):
     return updated_rows
 
 
+def _get_migration_connection(db_path):
+    if _is_postgres_db(db_path):
+        if psycopg is None:
+            raise RuntimeError("psycopg3 is required for PostgreSQL migration")
+        return psycopg.connect(db_path)
+    return sqlite3.connect(db_path, timeout=10, check_same_thread=False)
+
+
+def ensure_otp_verification_table(conn, logger):
+    if _is_postgres_conn(conn):
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS otp_verification (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT,
+                password TEXT NOT NULL,
+                otp_code TEXT NOT NULL,
+                otp_expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS otp_verification (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT,
+                password TEXT NOT NULL,
+                otp_code TEXT NOT NULL,
+                otp_expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    logger.info("Ensured otp_verification table exists")
+
+
 def run_production_migration(db_path, logger=None):
     active_logger = logger or logging.getLogger(__name__)
-    conn = sqlite3.connect(db_path, timeout=10, check_same_thread=False)
+    conn = _get_migration_connection(db_path)
 
     try:
         schema_result = _ensure_user_id_schema(conn, active_logger)
+        ensure_otp_verification_table(conn, active_logger)
         migrated_user_passwords = _migrate_passwords_in_table(conn, "users", active_logger)
         migrated_otp_passwords = _migrate_passwords_in_table(conn, "otp_verification", active_logger)
         conn.commit()
@@ -139,6 +213,8 @@ def run_production_migration(db_path, logger=None):
         return result
     finally:
         conn.close()
+
+
 
 
 if __name__ == "__main__":
