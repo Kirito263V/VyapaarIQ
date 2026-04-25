@@ -167,6 +167,36 @@ def _get_migration_connection(db_path):
     return sqlite3.connect(db_path, timeout=10, check_same_thread=False)
 
 
+def ensure_users_table(conn, logger):
+    if _is_postgres_conn(conn):
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                phone TEXT,
+                password TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                phone TEXT,
+                password TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    logger.info("Ensured users table exists")
+
+
 def ensure_otp_verification_table(conn, logger):
     if _is_postgres_conn(conn):
         conn.execute(
@@ -207,6 +237,7 @@ def run_production_migration(db_path, logger=None):
 
     try:
         schema_result = _ensure_user_id_schema(conn, active_logger)
+        ensure_users_table(conn, active_logger)
         ensure_otp_verification_table(conn, active_logger)
         migrated_user_passwords = _migrate_passwords_in_table(conn, "users", active_logger)
         migrated_otp_passwords = _migrate_passwords_in_table(conn, "otp_verification", active_logger)
