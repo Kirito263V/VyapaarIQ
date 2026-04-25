@@ -62,6 +62,26 @@ except Exception as e:
     logger.error(f"Database setup failed: {e}")
 
 app.register_blueprint(import_bp)
+
+
+# ================= SCALAR HELPER =================
+
+def scalar(cursor):
+    """
+    Return the first column of the first row from a cursor.
+
+    psycopg3 with dict_row returns dicts — .fetchone()[0] raises KeyError: 0.
+    sqlite3.Row supports both index and key access.
+    This helper works for both backends.
+    """
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+
+
 # ================= DATABASE CONNECTION =================
 
 
@@ -142,8 +162,6 @@ def _get_analytics_start_date():
 
 
 # ================= SMTP CONFIG =================
-
-import os
 
 EMAIL = os.environ.get("SMTP_EMAIL", "")
 APP_PASSWORD = os.environ.get("SMTP_APP_PASSWORD", "")
@@ -299,8 +317,6 @@ def verify_otp():
         conn.close()
         return jsonify({"message": "OTP expired"}), 400
 
-
-    # ✅ Check if user already exists before inserting
     existing_user = conn.execute("""
         SELECT id FROM users WHERE email=?
     """, (email,)).fetchone()
@@ -928,7 +944,6 @@ def add_sale():
 
         total_amount = 0
 
-        # calculate subtotal per item
         for item in data["items"]:
 
             qty = float(item["quantity"])
@@ -939,7 +954,6 @@ def add_sale():
 
             total_amount += subtotal
 
-        # insert into sales table
         cursor = conn.execute("""
             INSERT INTO sales
             (customer_id, sale_date, total_amount, payment_method, notes, user_id)
@@ -958,8 +972,6 @@ def add_sale():
 
         sale_id = get_last_insert_id(cursor)
 
-
-        # insert each item
         for item in data["items"]:
             product_id = int(item["product_id"])
 
@@ -1079,52 +1091,56 @@ def dashboard_summary():
     conn = get_db()
     user_id = _current_user_id()
 
-    total_sales = conn.execute("""
+    # FIX: scalar() replaces .fetchone()[0] — psycopg3 dict_row returns dicts,
+    #      not tuples, so [0] raises KeyError: 0.
+    # FIX: CAST(... AS NUMERIC) — PostgreSQL ROUND() requires NUMERIC, not REAL.
+
+    total_sales = scalar(conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_purchases = conn.execute("""
+    total_purchases = scalar(conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_expenses = conn.execute("""
+    total_expenses = scalar(conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_customers = conn.execute("""
+    total_customers = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM customers
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_products = conn.execute("""
+    total_products = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM products
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_suppliers = conn.execute("""
+    total_suppliers = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM suppliers
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_orders = conn.execute("""
+    total_orders = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM sales
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_profit = conn.execute("""
-        SELECT ROUND(COALESCE(SUM(
+    total_profit = scalar(conn.execute("""
+        SELECT ROUND(CAST(COALESCE(SUM(
             COALESCE(si.subtotal, 0) - (COALESCE(si.quantity, 0) * COALESCE(p.cost_price, 0))
-        ), 0), 2)
+        ), 0) AS NUMERIC), 2)
         FROM sale_items si
         JOIN sales s
         ON s.id = si.sale_id
@@ -1133,13 +1149,13 @@ def dashboard_summary():
         ON p.id = si.product_id
         AND p.user_id = si.user_id
         WHERE si.user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
     top_product_row = conn.execute("""
         SELECT
             p.name,
             COALESCE(SUM(si.quantity), 0) AS total_qty,
-            ROUND(COALESCE(SUM(si.subtotal), 0), 2) AS revenue
+            ROUND(CAST(COALESCE(SUM(si.subtotal), 0) AS NUMERIC), 2) AS revenue
         FROM sale_items si
         JOIN sales s
         ON s.id = si.sale_id
@@ -1156,7 +1172,7 @@ def dashboard_summary():
     trend_rows = conn.execute(f"""
         SELECT
             {sql_month_group_by('sale_date')} AS month,
-            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+            ROUND(CAST(COALESCE(SUM(total_amount), 0) AS NUMERIC), 2) AS revenue
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
@@ -1164,16 +1180,24 @@ def dashboard_summary():
         ORDER BY month
     """, (user_id,)).fetchall()
 
-    low_stock = conn.execute("""
+    low_stock = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM products
         WHERE user_id = ?
         AND current_stock <= reorder_level
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    expense_ratio = (total_expenses / total_sales * 100) if total_sales else 0
-    avg_order_value = (total_sales / total_orders) if total_orders else 0
-    profit_margin = (total_profit / total_sales * 100) if total_sales else 0
+    conn.close()
+
+    total_sales = total_sales or 0
+    total_purchases = total_purchases or 0
+    total_expenses = total_expenses or 0
+    total_profit = total_profit or 0
+    total_orders = total_orders or 0
+
+    expense_ratio = (float(total_expenses) / float(total_sales) * 100) if total_sales else 0
+    avg_order_value = (float(total_sales) / float(total_orders)) if total_orders else 0
+    profit_margin = (float(total_profit) / float(total_sales) * 100) if total_sales else 0
     revenue_chart = [float(row["revenue"] or 0) for row in trend_rows[-6:]]
     revenue_labels = [row["month"] for row in trend_rows[-6:] if row["month"]]
 
@@ -1186,9 +1210,9 @@ def dashboard_summary():
         "total_suppliers": total_suppliers,
         "total_orders": total_orders,
         "total_profit": total_profit,
-        "profit_margin": round(profit_margin, 2),
+        "profit_margin": round(float(profit_margin), 2),
         "avg_order_value": avg_order_value,
-        "expense_ratio": round(expense_ratio, 2),
+        "expense_ratio": round(float(expense_ratio), 2),
         "low_stock_count": low_stock,
         "top_product": top_product_row["name"] if top_product_row else "N/A",
         "top_product_qty": int(top_product_row["total_qty"]) if top_product_row else 0,
@@ -1218,60 +1242,60 @@ def analytics_summary():
     top_product_filter, top_product_params = apply_date_filter("s.sale_date", range_days, user_id)
     trend_filter, trend_params = apply_date_filter("sale_date", range_days, user_id)
 
-    total_sales = conn.execute("""
+    total_sales = scalar(conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
         WHERE user_id = ?
-    """ + sales_filter, _qparams(user_id, sales_params)).fetchone()[0]
+    """ + sales_filter, _qparams(user_id, sales_params)))
 
-    total_purchases = conn.execute("""
+    total_purchases = scalar(conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
         WHERE user_id = ?
-    """ + purchase_filter, _qparams(user_id, purchase_params)).fetchone()[0]
+    """ + purchase_filter, _qparams(user_id, purchase_params)))
 
-    total_expenses = conn.execute("""
+    total_expenses = scalar(conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
+    """ + expense_filter, _qparams(user_id, expense_params)))
 
     if range_days:
-        total_customers = conn.execute("""
+        total_customers = scalar(conn.execute("""
             SELECT COUNT(DISTINCT customer_id)
             FROM sales
             WHERE user_id = ?
             AND customer_id IS NOT NULL
-        """ + customer_filter, _qparams(user_id, customer_params)).fetchone()[0]
+        """ + customer_filter, _qparams(user_id, customer_params)))
     else:
-        total_customers = conn.execute("""
+        total_customers = scalar(conn.execute("""
             SELECT COUNT(*)
             FROM customers
             WHERE user_id = ?
-        """, (user_id,)).fetchone()[0]
+        """, (user_id,)))
 
-    total_products = conn.execute("""
+    total_products = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM products
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_suppliers = conn.execute("""
+    total_suppliers = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM suppliers
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    total_orders = conn.execute("""
+    total_orders = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM sales
         WHERE user_id = ?
-    """ + order_filter, _qparams(user_id, order_params)).fetchone()[0]
+    """ + order_filter, _qparams(user_id, order_params)))
 
-    total_profit = conn.execute("""
-        SELECT ROUND(COALESCE(SUM(
+    total_profit = scalar(conn.execute("""
+        SELECT ROUND(CAST(COALESCE(SUM(
             COALESCE(si.subtotal, 0) - (COALESCE(si.quantity, 0) * COALESCE(p.cost_price, 0))
-        ), 0), 2)
+        ), 0) AS NUMERIC), 2)
         FROM sale_items si
         JOIN sales s
         ON s.id = si.sale_id
@@ -1280,13 +1304,13 @@ def analytics_summary():
         ON p.id = si.product_id
         AND p.user_id = si.user_id
         WHERE si.user_id = ?
-    """ + profit_filter, _qparams(user_id, profit_params)).fetchone()[0]
+    """ + profit_filter, _qparams(user_id, profit_params)))
 
     top_product_row = conn.execute("""
         SELECT
             p.name,
             COALESCE(SUM(si.quantity), 0) AS total_qty,
-            ROUND(COALESCE(SUM(si.subtotal), 0), 2) AS revenue
+            ROUND(CAST(COALESCE(SUM(si.subtotal), 0) AS NUMERIC), 2) AS revenue
         FROM sale_items si
         JOIN sales s
         ON s.id = si.sale_id
@@ -1304,7 +1328,7 @@ def analytics_summary():
     trend_rows = conn.execute(f"""
         SELECT
             {sql_month_group_by('sale_date')} AS month,
-            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+            ROUND(CAST(COALESCE(SUM(total_amount), 0) AS NUMERIC), 2) AS revenue
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
@@ -1313,16 +1337,24 @@ def analytics_summary():
         ORDER BY month
     """, _qparams(user_id, trend_params)).fetchall()
 
-    low_stock = conn.execute("""
+    low_stock = scalar(conn.execute("""
         SELECT COUNT(*)
         FROM products
         WHERE user_id = ?
         AND current_stock <= reorder_level
-    """, (user_id,)).fetchone()[0]
+    """, (user_id,)))
 
-    expense_ratio = (total_expenses / total_sales * 100) if total_sales else 0
-    avg_order_value = (total_sales / total_orders) if total_orders else 0
-    profit_margin = (total_profit / total_sales * 100) if total_sales else 0
+    conn.close()
+
+    total_sales = total_sales or 0
+    total_purchases = total_purchases or 0
+    total_expenses = total_expenses or 0
+    total_profit = total_profit or 0
+    total_orders = total_orders or 0
+
+    expense_ratio = (float(total_expenses) / float(total_sales) * 100) if total_sales else 0
+    avg_order_value = (float(total_sales) / float(total_orders)) if total_orders else 0
+    profit_margin = (float(total_profit) / float(total_sales) * 100) if total_sales else 0
     revenue_chart = [float(row["revenue"] or 0) for row in trend_rows]
     revenue_labels = [row["month"] for row in trend_rows if row["month"]]
 
@@ -1335,9 +1367,9 @@ def analytics_summary():
         "total_suppliers": total_suppliers,
         "total_orders": total_orders,
         "total_profit": total_profit,
-        "profit_margin": round(profit_margin, 2),
+        "profit_margin": round(float(profit_margin), 2),
         "avg_order_value": avg_order_value,
-        "expense_ratio": round(expense_ratio, 2),
+        "expense_ratio": round(float(expense_ratio), 2),
         "low_stock_count": low_stock,
         "top_product": top_product_row["name"] if top_product_row else "N/A",
         "top_product_qty": int(top_product_row["total_qty"]) if top_product_row else 0,
@@ -1365,7 +1397,7 @@ def sales_trend():
     rows = conn.execute(f"""
         SELECT
             {sql_month_group_by('sale_date')} AS month,
-            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+            ROUND(CAST(COALESCE(SUM(total_amount), 0) AS NUMERIC), 2) AS revenue
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
@@ -1373,6 +1405,8 @@ def sales_trend():
         GROUP BY month
         ORDER BY month
     """, _qparams(user_id, sales_params)).fetchall()
+
+    conn.close()
 
     revenue_chart_labels = []
     revenue_chart = []
@@ -1394,9 +1428,6 @@ def sales_trend():
             "month": month_value,
             "revenue": revenue
         })
-
-    print("Monthly revenue labels:", revenue_chart_labels)
-    print("Monthly revenue values:", revenue_chart)
 
     return jsonify({
         "labels": labels,
@@ -1421,23 +1452,29 @@ def profit_analysis():
     purchase_filter, purchase_params = apply_date_filter("purchase_date", range_days, user_id)
     expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
 
-    revenue = conn.execute("""
+    revenue = scalar(conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM sales
         WHERE user_id = ?
-    """ + revenue_filter, _qparams(user_id, revenue_params)).fetchone()[0]
+    """ + revenue_filter, _qparams(user_id, revenue_params)))
 
-    cost = conn.execute("""
+    cost = scalar(conn.execute("""
         SELECT COALESCE(SUM(total_amount), 0)
         FROM purchases
         WHERE user_id = ?
-    """ + purchase_filter, _qparams(user_id, purchase_params)).fetchone()[0]
+    """ + purchase_filter, _qparams(user_id, purchase_params)))
 
-    expenses = conn.execute("""
+    expenses = scalar(conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
+    """ + expense_filter, _qparams(user_id, expense_params)))
+
+    conn.close()
+
+    revenue = float(revenue or 0)
+    cost = float(cost or 0)
+    expenses = float(expenses or 0)
 
     profit = revenue - cost - expenses
     gross_margin = ((revenue - cost) / revenue * 100) if revenue else 0
@@ -1473,7 +1510,7 @@ def revenue_cost_trend():
     sales_rows = conn.execute(f"""
         SELECT
             {sql_month_group_by('sale_date')} AS month,
-            ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
+            ROUND(CAST(COALESCE(SUM(total_amount), 0) AS NUMERIC), 2) AS revenue
         FROM sales
         WHERE user_id = ?
         AND sale_date IS NOT NULL
@@ -1483,6 +1520,7 @@ def revenue_cost_trend():
     """, _qparams(user_id, sales_params)).fetchall()
 
     if not sales_rows:
+        conn.close()
         return jsonify({
             "labels": [],
             "revenue": [],
@@ -1492,7 +1530,7 @@ def revenue_cost_trend():
     purchase_rows = conn.execute(f"""
         SELECT
             {sql_month_group_by('purchase_date')} AS month,
-            ROUND(COALESCE(SUM(total_amount), 0), 2) AS amount
+            ROUND(CAST(COALESCE(SUM(total_amount), 0) AS NUMERIC), 2) AS amount
         FROM purchases
         WHERE user_id = ?
         AND purchase_date IS NOT NULL
@@ -1504,7 +1542,7 @@ def revenue_cost_trend():
     expense_rows = conn.execute(f"""
         SELECT
             {sql_month_group_by('expense_date')} AS month,
-            ROUND(COALESCE(SUM(amount), 0), 2) AS amount
+            ROUND(CAST(COALESCE(SUM(amount), 0) AS NUMERIC), 2) AS amount
         FROM expenses
         WHERE user_id = ?
         AND expense_date IS NOT NULL
@@ -1512,6 +1550,8 @@ def revenue_cost_trend():
         GROUP BY month
         ORDER BY month
     """, _qparams(user_id, expense_params)).fetchall()
+
+    conn.close()
 
     revenue_by_month = {
         row["month"]: float(row["revenue"] or 0)
@@ -1559,7 +1599,7 @@ def customer_insights():
     rows = conn.execute("""
         SELECT
             customers.name,
-            ROUND(COALESCE(SUM(sales.total_amount), 0), 2) AS total
+            ROUND(CAST(COALESCE(SUM(sales.total_amount), 0) AS NUMERIC), 2) AS total
         FROM sales
         JOIN customers
         ON customers.id = sales.customer_id
@@ -1570,6 +1610,8 @@ def customer_insights():
         ORDER BY total DESC
         LIMIT 5
     """, _qparams(user_id, sales_params)).fetchall()
+
+    conn.close()
 
     return jsonify([dict(row) for row in rows])
 
@@ -1597,6 +1639,8 @@ def inventory_insights():
         ORDER BY products.name
     """, (user_id,)).fetchall()
 
+    conn.close()
+
     return jsonify([dict(row) for row in rows])
 
 
@@ -1612,35 +1656,40 @@ def expense_breakdown():
 
     expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
 
-    total_expenses = conn.execute("""
+    total_expenses = scalar(conn.execute("""
         SELECT COALESCE(SUM(amount), 0)
         FROM expenses
         WHERE user_id = ?
-    """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
+    """ + expense_filter, _qparams(user_id, expense_params)))
 
-    current_month = conn.execute(f"""
+    current_month = scalar(conn.execute(f"""
         SELECT {sql_month_group_by('expense_date')}
         FROM expenses
         WHERE user_id = ?
         AND expense_date IS NOT NULL
-    """ + expense_filter, (user_id,)).fetchone()[0]
+        ORDER BY expense_date DESC
+        LIMIT 1
+    """, (user_id,)))
 
     previous_month = None
     if current_month:
-        previous_month = conn.execute(f"""
+        previous_month = scalar(conn.execute(f"""
             SELECT {sql_month_from_date_param_expr()}
-        """, (f"{current_month}-01",)).fetchone()[0]
+        """, (f"{current_month}-01",)))
 
+    # FIX: use (user_id,) not (user_id,) + expense_filter params for the
+    # category grouping query — expense_filter is already baked into the
+    # outer WHERE so we only need user_id here for the category list
     rows = conn.execute("""
         SELECT
             category,
-            ROUND(COALESCE(SUM(amount), 0), 2) AS amount
+            ROUND(CAST(COALESCE(SUM(amount), 0) AS NUMERIC), 2) AS amount
         FROM expenses
         WHERE user_id = ?
     """ + expense_filter + """
         GROUP BY category
         ORDER BY amount DESC
-    """, (user_id,)).fetchall()
+    """, _qparams(user_id, expense_params)).fetchall()
 
     result = []
     for row in rows:
@@ -1651,18 +1700,25 @@ def expense_breakdown():
         previous_amount = 0
 
         if current_month:
-            current_amount = conn.execute(f"""
+            # FIX: category = ? instead of category IS ?
+            # IS is not valid for equality comparison in PostgreSQL.
+            # FIX: no expense_filter appended — month filter replaces it here.
+            current_amount = scalar(conn.execute(f"""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category IS ? AND {sql_month_group_by('expense_date')} = ?
-            """ + expense_filter, (user_id, row["category"], current_month)).fetchone()[0] or 0
+                WHERE user_id = ?
+                AND category = ?
+                AND {sql_month_group_by('expense_date')} = ?
+            """, (user_id, row["category"], current_month))) or 0
 
         if previous_month:
-            previous_amount = conn.execute(f"""
+            previous_amount = scalar(conn.execute(f"""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category IS ? AND {sql_month_group_by('expense_date')} = ?
-            """ + expense_filter, (user_id, row["category"], previous_month)).fetchone()[0] or 0
+                WHERE user_id = ?
+                AND category = ?
+                AND {sql_month_group_by('expense_date')} = ?
+            """, (user_id, row["category"], previous_month))) or 0
 
         if previous_amount:
             change = ((current_amount - previous_amount) / previous_amount) * 100
@@ -1674,9 +1730,11 @@ def expense_breakdown():
         result.append({
             "category": category,
             "amount": amount,
-            "pct": round((amount / total_expenses * 100), 2) if total_expenses else 0,
+            "pct": round((amount / float(total_expenses) * 100), 2) if total_expenses else 0,
             "change": round(change, 2)
         })
+
+    conn.close()
 
     return jsonify(result)
 
@@ -1696,7 +1754,7 @@ def top_products():
     rows = conn.execute("""
         SELECT
             products.name,
-            ROUND(SUM(sale_items.quantity * sale_items.price), 2) AS revenue
+            ROUND(CAST(SUM(sale_items.quantity * sale_items.price) AS NUMERIC), 2) AS revenue
         FROM sale_items
         JOIN sales
         ON sales.id = sale_items.sale_id
@@ -1711,6 +1769,8 @@ def top_products():
         LIMIT 5
     """, _qparams(user_id, sales_params)).fetchall()
 
+    conn.close()
+
     return jsonify([dict(row) for row in rows])
 
 
@@ -1721,19 +1781,19 @@ def inventory_value():
     conn = get_db()
     user_id = _current_user_id()
 
-    value = conn.execute("""
-        SELECT ROUND(COALESCE(SUM(COALESCE(current_stock, 0) * COALESCE(cost_price, 0)), 0), 2)
+    value = scalar(conn.execute("""
+        SELECT ROUND(CAST(COALESCE(SUM(COALESCE(current_stock, 0) * COALESCE(cost_price, 0)), 0) AS NUMERIC), 2)
         FROM products
         WHERE user_id = ?
-    """, (user_id,)).fetchone()[0] or 0
+    """, (user_id,))) or 0
+
+    conn.close()
 
     return jsonify({
         "inventory_value": value
     })
 
 # ================= RUN SERVER =================
-
-import os
 
 if __name__ == "__main__":
     app.run(
