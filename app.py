@@ -3,7 +3,6 @@ import os
 import csv
 import io
 import logging
-import sqlite3
 import random
 import smtplib
 import zipfile
@@ -11,6 +10,14 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
 
+from database.db_utils import (
+    execute_query,
+    get_db,
+    get_last_insert_id,
+    get_table_columns,
+    sql_month_from_date_param_expr,
+    sql_month_group_by,
+)
 from database.migration_production import hash_password, is_password_hash, run_production_migration
 from database.init_database import reset_database
 from routes.import_routes import import_bp
@@ -36,7 +43,7 @@ if DATABASE_URL:
     DB = DATABASE_URL
 else:
     DB_TYPE = "sqlite"
-    DB = "/tmp/vyapaariq.db"
+    DB = os.path.join(BASE_DIR, "instance", "vyapaariq.db")
 
 app.config["DATABASE"] = DB
 
@@ -56,18 +63,6 @@ except Exception as e:
 
 app.register_blueprint(import_bp)
 # ================= DATABASE CONNECTION =================
-
-import psycopg
-import sqlite3
-
-def get_db():
-    if DB_TYPE == "postgres":
-        conn = psycopg.connect(DATABASE_URL)
-        
-    else:
-        conn = sqlite3.connect(DB)
-        conn.row_factory = sqlite3.Row
-        return conn
 
 
 def _auth_required_response():
@@ -472,8 +467,8 @@ def export_my_data():
                 for row in rows:
                     writer.writerow([row[key] for key in headers])
             else:
-                columns = conn.execute(f"PRAGMA table_info({table})").fetchall()
-                writer.writerow([column["name"] for column in columns])
+                columns = get_table_columns(conn, table)
+                writer.writerow(columns)
 
             archive.writestr(f"{table}.csv", csv_buffer.getvalue())
 
@@ -939,6 +934,7 @@ def add_sale():
             INSERT INTO sales
             (customer_id, sale_date, total_amount, payment_method, notes, user_id)
             VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
         """, (
 
             customer_id,
@@ -950,7 +946,7 @@ def add_sale():
 
         ))
 
-        sale_id = cursor.lastrowid
+        sale_id = get_last_insert_id(cursor)
 
 
         # insert each item
@@ -1019,6 +1015,7 @@ def add_purchase():
             INSERT INTO purchases
             (supplier_id, purchase_date, status, user_id)
             VALUES (?, ?, ?, ?)
+            RETURNING id
         """, (
 
             supplier_id,
@@ -1028,7 +1025,7 @@ def add_purchase():
 
         ))
 
-        purchase_id = cursor.lastrowid
+        purchase_id = get_last_insert_id(cursor)
 
         for item in data.get("items", []):
             product_id = item["product_id"]
@@ -1146,9 +1143,9 @@ def dashboard_summary():
         LIMIT 1
     """, (user_id,)).fetchone()
 
-    trend_rows = conn.execute("""
+    trend_rows = conn.execute(f"""
         SELECT
-            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
+            {sql_month_group_by('sale_date')} AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
@@ -1294,9 +1291,9 @@ def analytics_summary():
         LIMIT 1
     """, _qparams(user_id, top_product_params)).fetchone()
 
-    trend_rows = conn.execute("""
+    trend_rows = conn.execute(f"""
         SELECT
-            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
+            {sql_month_group_by('sale_date')} AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
@@ -1355,9 +1352,9 @@ def sales_trend():
 
     sales_filter, sales_params = apply_date_filter("sale_date", range_days, user_id)
 
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT
-            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
+            {sql_month_group_by('sale_date')} AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
@@ -1463,9 +1460,9 @@ def revenue_cost_trend():
     purchase_filter, purchase_params = apply_date_filter("purchase_date", range_days, user_id)
     expense_filter, expense_params = apply_date_filter("expense_date", range_days, user_id)
 
-    sales_rows = conn.execute("""
+    sales_rows = conn.execute(f"""
         SELECT
-            STRFTIME('%Y-%m', DATE(sale_date)) AS month,
+            {sql_month_group_by('sale_date')} AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS revenue
         FROM sales
         WHERE user_id = ?
@@ -1482,9 +1479,9 @@ def revenue_cost_trend():
             "cost": []
         })
 
-    purchase_rows = conn.execute("""
+    purchase_rows = conn.execute(f"""
         SELECT
-            STRFTIME('%Y-%m', DATE(purchase_date)) AS month,
+            {sql_month_group_by('purchase_date')} AS month,
             ROUND(COALESCE(SUM(total_amount), 0), 2) AS amount
         FROM purchases
         WHERE user_id = ?
@@ -1494,9 +1491,9 @@ def revenue_cost_trend():
         ORDER BY month
     """, _qparams(user_id, purchase_params)).fetchall()
 
-    expense_rows = conn.execute("""
+    expense_rows = conn.execute(f"""
         SELECT
-            STRFTIME('%Y-%m', DATE(expense_date)) AS month,
+            {sql_month_group_by('expense_date')} AS month,
             ROUND(COALESCE(SUM(amount), 0), 2) AS amount
         FROM expenses
         WHERE user_id = ?
@@ -1611,8 +1608,8 @@ def expense_breakdown():
         WHERE user_id = ?
     """ + expense_filter, _qparams(user_id, expense_params)).fetchone()[0]
 
-    current_month = conn.execute("""
-        SELECT STRFTIME('%Y-%m', MAX(DATE(expense_date)))
+    current_month = conn.execute(f"""
+        SELECT {sql_month_group_by('expense_date')}
         FROM expenses
         WHERE user_id = ?
         AND expense_date IS NOT NULL
@@ -1620,8 +1617,8 @@ def expense_breakdown():
 
     previous_month = None
     if current_month:
-        previous_month = conn.execute("""
-            SELECT STRFTIME('%Y-%m', date(?, 'start of month', '-1 month'))
+        previous_month = conn.execute(f"""
+            SELECT {sql_month_from_date_param_expr()}
         """, (f"{current_month}-01",)).fetchone()[0]
 
     rows = conn.execute("""
@@ -1644,17 +1641,17 @@ def expense_breakdown():
         previous_amount = 0
 
         if current_month:
-            current_amount = conn.execute("""
+            current_amount = conn.execute(f"""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category IS ? AND STRFTIME('%Y-%m', DATE(expense_date)) = ?
+                WHERE user_id = ? AND category IS ? AND {sql_month_group_by('expense_date')} = ?
             """ + expense_filter, (user_id, row["category"], current_month)).fetchone()[0] or 0
 
         if previous_month:
-            previous_amount = conn.execute("""
+            previous_amount = conn.execute(f"""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM expenses
-                WHERE user_id = ? AND category IS ? AND STRFTIME('%Y-%m', DATE(expense_date)) = ?
+                WHERE user_id = ? AND category IS ? AND {sql_month_group_by('expense_date')} = ?
             """ + expense_filter, (user_id, row["category"], previous_month)).fetchone()[0] or 0
 
         if previous_amount:

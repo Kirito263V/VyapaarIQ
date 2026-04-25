@@ -1,10 +1,10 @@
 import json
 import logging
-import sqlite3
 
 import pandas as pd
 from flask import Blueprint, current_app, jsonify, request, session
 
+from database.db_utils import get_db, get_table_columns
 from services.import_executor import (
     execute_import,
     _resolve_product_id_from_name,
@@ -37,10 +37,8 @@ SYSTEM_COLUMNS = {"id", "user_id"}
 
 
 def _get_db():
-    db_path = current_app.config.get("DATABASE", "vyapaariq.db")
-    conn = sqlite3.connect(db_path, timeout=10, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    db_url = current_app.config.get("DATABASE")
+    return get_db(db_url)
 
 
 def _auth_error():
@@ -141,8 +139,7 @@ def _apply_column_mapping(df, mapping):
 def _get_table_columns(conn, dataset):
     if not dataset:
         return []
-    rows = conn.execute(f"PRAGMA table_info({dataset})").fetchall()
-    return [row["name"] for row in rows]
+    return get_table_columns(conn, dataset)
 
 
 def _get_required_columns(table_columns):
