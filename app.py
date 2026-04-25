@@ -283,7 +283,17 @@ def verify_otp():
         conn.close()
         return jsonify({"message": "Invalid OTP"}), 400
 
-    if datetime.now() > datetime.fromisoformat(record["otp_expires_at"]):
+    expires_at = record["otp_expires_at"]
+    if isinstance(expires_at, str):
+        try:
+            expires_at = datetime.fromisoformat(expires_at)
+        except ValueError:
+            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+
+    if not isinstance(expires_at, datetime):
+        expires_at = datetime.fromisoformat(str(expires_at))
+
+    if datetime.now() > expires_at:
         conn.close()
         return jsonify({"message": "OTP expired"}), 400
 
