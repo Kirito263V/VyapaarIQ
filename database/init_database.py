@@ -100,7 +100,7 @@ def _create_database_schema(conn, postgres=False):
         rating INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(user_id, name)
+        UNIQUE(user_id, phone)
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -113,7 +113,7 @@ def _create_database_schema(conn, postgres=False):
         customer_type TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE(user_id, name)
+        UNIQUE(user_id,phone)
     );
 
     CREATE TABLE IF NOT EXISTS products (

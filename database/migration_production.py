@@ -278,6 +278,12 @@ def run_production_migration(db_path, logger=None):
         ensure_users_table(conn, active_logger)
         ensure_otp_verification_table(conn, active_logger)
         schema_result = _ensure_user_id_schema(conn, active_logger)
+        
+        conn.execute("""
+        ALTER TABLE customers
+        DROP CONSTRAINT IF EXISTS customers_user_id_name_key;
+        """)
+        
         migrated_user_passwords = _migrate_passwords_in_table(conn, "users", active_logger)
         migrated_otp_passwords = _migrate_passwords_in_table(conn, "otp_verification", active_logger)
         conn.commit()
