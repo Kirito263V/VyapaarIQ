@@ -1,6 +1,3 @@
-"""
-database/demo_loader.py  —  place this in your database/ folder
-"""
 import random, logging
 from datetime import date, timedelta
 
@@ -199,6 +196,8 @@ def load_demo_data(conn, user_id):
         cust_ids=[]; ctypes=[]
         used=set()
         for i in range(250):
+            if i % 50 == 0:
+              conn.commit()
             fn=random.choice(FNAMES); ln=random.choice(LNAMES)
             b=f"{fn.lower()}.{ln.lower()}{i}"
             while b in used: b+=str(random.randint(1,9))
@@ -222,7 +221,9 @@ def load_demo_data(conn, user_id):
 
         # purchases + purchase_items
         np=0; npi=0
-        for pd in sorted([_rd() for _ in range(180)]):
+        for idx, pd in enumerate(sorted([_rd() for _ in range(180)])):
+            if idx % 20 == 0:
+                 conn.commit()
             si=random.randint(0,len(SUPPLIERS)-1)
             ch=random.sample(sup2prod.get(si,list(range(len(prod_meta)))),
                              min(random.randint(3,7),len(sup2prod.get(si,prod_meta))))
@@ -250,7 +251,9 @@ def load_demo_data(conn, user_id):
             all_dates.extend([d]*n); d+=timedelta(days=1)
         all_dates=sorted(all_dates)
         ns=0; nsi=0
-        for sd in all_dates:
+        for idx, sd in enumerate(all_dates):
+            if idx % 100 == 0:
+              conn.commit()
             ci=random.randint(0,79) if random.random()<0.65 else random.randint(0,len(cust_ids)-1)
             cid=cust_ids[ci]; ct=ctypes[ci]
             pm_m=random.choices(PMS,PWS)[0]; note=random.choice(NOTES)
@@ -276,6 +279,7 @@ def load_demo_data(conn, user_id):
         # expenses
         ec=0; cm=START_DATE.replace(day=1)
         while cm<=END_DATE.replace(day=1):
+            conn.commit()
             for cat,base,var,day,desc in EXP_TMPL:
                 try: ed=cm.replace(day=day)
                 except ValueError: ed=cm.replace(day=28)
