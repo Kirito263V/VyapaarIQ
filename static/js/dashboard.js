@@ -2,7 +2,7 @@ const $ = id => document.getElementById(id);
 const today = () => new Date().toISOString().split('T')[0];
 const fmtINR = v => '₹' + Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 
-/* PANEL SWITCHING */
+/* ── PANEL SWITCHING ── */
 function showPanel(el, panelId, title){
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -15,14 +15,14 @@ function showPanel(el, panelId, title){
   closeSidebar();
 }
 
-/* THEME */
+/* ── THEME ── */
 function toggleTheme(){
   const h = document.documentElement, k = $('knob');
   h.dataset.theme = h.dataset.theme === 'dark' ? 'light' : 'dark';
   k.textContent = h.dataset.theme === 'dark' ? '🌙' : '☀️';
 }
 
-/* SIDEBAR */
+/* ── SIDEBAR ── */
 function toggleSidebar(){
   $('sidebar').classList.toggle('open');
   $('overlay').classList.toggle('show');
@@ -34,7 +34,7 @@ function closeSidebar(){
   }
 }
 
-/* TOAST */
+/* ── TOAST ── */
 function toast(msg, type='suc', dur=3500){
   const tc = $('toast-container');
   const icons = {suc:'✅',err:'❌',inf:'📡'};
@@ -45,12 +45,12 @@ function toast(msg, type='suc', dur=3500){
   setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),400); }, dur);
 }
 
-/* DATES */
+/* ── DATES ── */
 function initDates(){
   ['saleDate','purchaseDate','expenseDate'].forEach(id=>{ const el=$(id); if(el) el.value=today(); });
 }
 
-/* KPIs */
+/* ── KPIs ── */
 function loadKPIs(){
   toast('Fetching dashboard data…','inf',2000);
   Promise.all([
@@ -79,7 +79,7 @@ function loadKPIs(){
       renderKPI('kpi-top-product','Basmati Rice 5kg','● ₹1,24,600 revenue','up');
       $('qs-purchases').textContent='42';$('qs-products').textContent='186';
       $('qs-expenses').textContent='₹38,200';$('qs-suppliers').textContent='18';
-      renderRevChart({ labels:['Oct','Nov','Dec','Jan','Feb','Mar'], values:[62,78,95,71,88,100] });
+      renderRevChart({ labels:['Oct','Nov','Dec','Jan','Feb','Mar'], values:[62000,78000,95000,71000,88000,100000] });
       addActivity('Demo data loaded','API not connected — showing mock data','var(--amber)');
     });
 }
@@ -91,54 +91,95 @@ function renderKPI(id,val,change,cls){
   if(ch){ ch.textContent=change; ch.className='kpi-ch '+cls; }
 }
 
+/* ── REVENUE CHART ────────────────────────────────────────────────────
+ * Structure rendered into .rev-chart-wrapper:
+ *
+ *  .rev-chart-wrapper          (overflow:hidden — outer clip)
+ *    .rev-chart-scroll         (overflow-x:auto — horizontal scroll)
+ *      .rev-chart              (flex nowrap — all bars in ONE row)
+ *        .rev-col × N
+ *          .rev-value          (tooltip, visible via scroll padding)
+ *          .rev-track
+ *            .rev-bar
+ *          .rev-label
+ * ----------------------------------------------------------------- */
 function renderRevChart(data){
-  const wrap=document.getElementById('revBars'); if(!wrap) return;
-  wrap.innerHTML='';
+  const wrapper = $('revBars');       // this is .rev-chart-wrapper in HTML
+  if(!wrapper) return;
+  wrapper.innerHTML = '';
+
   const values = data?.revenue_chart || data?.values || [];
   const labels = data?.revenue_chart_labels || data?.labels || [];
+
   if(!values.length){
-    wrap.innerHTML='<div class="empty-state">No monthly revenue data available.</div>';
+    wrapper.innerHTML = '<div class="empty-state" style="padding:40px 0">No monthly revenue data available.</div>';
     return;
   }
-  const maxBars = 24;
-  const trimmedValues = values.length > maxBars ? values.slice(-maxBars) : values;
-  const trimmedLabels = labels.length > maxBars ? labels.slice(-maxBars) : labels;
-  const max = Math.max(...trimmedValues, 0);
+
+  const MAX_BARS = 24;
+  const trimValues = values.length > MAX_BARS ? values.slice(-MAX_BARS) : values;
+  const trimLabels = labels.length > MAX_BARS ? labels.slice(-MAX_BARS) : labels;
+  const maxVal = Math.max(...trimValues, 1);
+
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const formatLabel = label => {
-    if(!label) return '';
-    const parts = label.toString().split('-');
+  const fmtLabel = lbl => {
+    if(!lbl) return '';
+    const parts = lbl.toString().split('-');
     if(parts.length === 2){
-      const month = monthNames[Number(parts[1]) - 1] || parts[1];
-      const year = parts[0].slice(-2);
-      return `${month} ${year}`;
+      const mon = monthNames[Number(parts[1]) - 1] || parts[1];
+      const yr  = parts[0].slice(-2);
+      return `${mon} '${yr}`;
     }
-    return label;
+    return lbl;
   };
-  trimmedValues.forEach((value,i)=>{
-    const pct = max > 0 ? Math.max(8, (value / max) * 100) : 8;
-    const col = document.createElement('div');
-    col.className='rev-col';
-    const valueHint = document.createElement('div');
-    valueHint.className='rev-value';
-    valueHint.textContent = fmtINR(value);
+
+  /* Build scroll container */
+  const scrollDiv = document.createElement('div');
+  scrollDiv.className = 'rev-chart-scroll';
+
+  /* Build chart row */
+  const chartDiv = document.createElement('div');
+  chartDiv.className = 'rev-chart';
+
+  trimValues.forEach((value, i) => {
+    /* height as % of track, floored at 6% so zero-value bars are visible */
+    const pct = maxVal > 0 ? Math.max(6, (value / maxVal) * 100) : 6;
+
+    const col   = document.createElement('div');
+    col.className = 'rev-col';
+
+    const hint  = document.createElement('div');
+    hint.className = 'rev-value';
+    hint.textContent = fmtINR(value);
+
     const track = document.createElement('div');
-    track.className='rev-track';
-    const bar = document.createElement('div');
-    bar.className='rev-bar';
-    bar.style.height='0%';
-    const label = document.createElement('div');
-    label.className='rev-label';
-    label.textContent = formatLabel(trimmedLabels[i] || '');
+    track.className = 'rev-track';
+
+    const bar   = document.createElement('div');
+    bar.className = 'rev-bar';
+    bar.style.height = '0%';   /* animates to pct on rAF */
+
+    const lbl   = document.createElement('div');
+    lbl.className = 'rev-label';
+    lbl.textContent = fmtLabel(trimLabels[i] || '');
+
     track.appendChild(bar);
-    col.appendChild(valueHint);
+    col.appendChild(hint);
     col.appendChild(track);
-    col.appendChild(label);
-    wrap.appendChild(col);
-    requestAnimationFrame(()=>{ bar.style.height = pct + '%'; });
+    col.appendChild(lbl);
+    chartDiv.appendChild(col);
+
+    /* Staggered animation */
+    requestAnimationFrame(() => {
+      setTimeout(() => { bar.style.height = pct + '%'; }, i * 30);
+    });
   });
+
+  scrollDiv.appendChild(chartDiv);
+  wrapper.appendChild(scrollDiv);
 }
 
+/* ── ACTIVITY FEED ── */
 function addActivity(title,text,color){
   const feed=$('activityFeed'); if(!feed) return;
   const item=document.createElement('div');
@@ -147,7 +188,7 @@ function addActivity(title,text,color){
   feed.insertBefore(item,feed.firstChild);
 }
 
-/* STOCK ALERTS */
+/* ── STOCK ALERTS ── */
 function loadStockAlerts(){
   const tbody=$('alertsTbody');
   tbody.innerHTML='<tr class="loading-row"><td colspan="5"><span class="inline-spinner"></span>Fetching alerts…</td></tr>';
@@ -178,7 +219,7 @@ function renderAlertsTable(data){
 
 function resolveAlert(pid){ toast(`Alert resolved for Product ${pid}`,'suc'); loadStockAlerts(); }
 
-/* DROPDOWNS */
+/* ── DROPDOWNS ── */
 function loadDropdowns(){
   fetch('/api/categories').then(r=>r.json()).then(data=>populateSel('sel-category',data,'id','name','— Select Category —')).catch(()=>populateSel('sel-category',[{id:1,name:'Grocery'},{id:2,name:'Electronics'},{id:3,name:'Beverages'},{id:4,name:'Personal Care'}],'id','name','— Select Category —'));
   fetch('/api/suppliers').then(r=>r.json()).then(data=>{ populateSel('sel-supplier',data,'id','name','— Select Supplier —'); populateSel('sel-pur-supplier',data,'id','name','— Select Supplier —'); }).catch(()=>{ const s=[{id:1,name:'Agarwal Traders'},{id:2,name:'Mehta Wholesale'},{id:3,name:'Singh Distributors'}]; populateSel('sel-supplier',s,'id','name','— Select Supplier —'); populateSel('sel-pur-supplier',s,'id','name','— Select Supplier —'); });
@@ -192,7 +233,7 @@ function populateSel(selId,data,valKey,labelKey,placeholder){
   (data||[]).forEach(item=>{ const opt=document.createElement('option'); opt.value=item[valKey]; opt.textContent=item[labelKey]; sel.appendChild(opt); });
 }
 
-/* SALE ITEMS */
+/* ── SALE ITEMS ── */
 let saleItemCount=0, purchaseItemCount=0;
 function addSaleItem(){
   saleItemCount++;
@@ -231,7 +272,7 @@ function submitSale(e){
     .catch(()=>{ toast('Sale saved (API offline — demo mode)','inf'); form.reset(); resetSaleItems(); initDates(); });
 }
 
-/* PURCHASE ITEMS */
+/* ── PURCHASE ITEMS ── */
 function addPurchaseItem(){
   purchaseItemCount++;
   const prods=window._products||[];
@@ -268,7 +309,7 @@ function submitPurchase(e){
     .catch(()=>{ toast('Purchase saved (API offline — demo mode)','inf'); form.reset(); resetPurchaseItems(); initDates(); });
 }
 
-/* GENERIC FORM */
+/* ── GENERIC FORM ── */
 function submitForm(e,formId,endpoint){
   e.preventDefault();
   const form=$(formId), fd=new FormData(form), payload=Object.fromEntries(fd.entries());
@@ -281,7 +322,7 @@ function submitForm(e,formId,endpoint){
     .finally(()=>{ if(subBtn){ subBtn.disabled=false; subBtn.innerHTML=subBtn.dataset.orig||subBtn.textContent; } });
 }
 
-/* INIT */
+/* ── INIT ── */
 (function init(){
   document.querySelectorAll('.btn-sub').forEach(b=>b.dataset.orig=b.innerHTML);
   initDates();

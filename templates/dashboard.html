@@ -6,18 +6,15 @@
 <title>VyapaarIQ — Analytics Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/static/css/dashboard.css">
-
 </head>
 <body>
+
+<!-- ── DEMO MODAL ── -->
 <div id="demoModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55);
      z-index:9999; align-items:center; justify-content:center;">
   <div style="background:#fff; border-radius:16px; padding:40px 36px; max-width:460px;
               width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.2); text-align:center; position:relative;">
- 
-    <!-- Icon -->
     <div style="font-size:52px; margin-bottom:12px;">📊</div>
- 
-    <!-- Heading -->
     <h2 style="margin:0 0 10px; font-size:22px; font-weight:700; color:#1a1a2e;">
       See VyapaarIQ in Action
     </h2>
@@ -27,8 +24,6 @@
       <br><br>
       You can clear it and import your own data anytime.
     </p>
- 
-    <!-- Stats strip -->
     <div style="display:flex; gap:12px; justify-content:center; margin-bottom:28px;">
       <div style="background:#f0f4ff; border-radius:10px; padding:10px 16px;">
         <div style="font-size:20px; font-weight:700; color:#4361ee;">8,500+</div>
@@ -47,8 +42,6 @@
         <div style="font-size:11px; color:#666;">Months</div>
       </div>
     </div>
- 
-    <!-- Buttons -->
     <button id="btnLoadDemo"
       style="width:100%; padding:14px; background:#4361ee; color:#fff; border:none;
              border-radius:10px; font-size:16px; font-weight:600; cursor:pointer;
@@ -60,14 +53,13 @@
              border-radius:10px; font-size:14px; cursor:pointer;">
       Skip — I'll add my own data
     </button>
- 
-    <!-- Loading state (hidden by default) -->
     <div id="demoLoading" style="display:none; margin-top:16px; color:#4361ee; font-size:14px;">
       ⏳ Loading demo data, please wait…
     </div>
   </div>
 </div>
 
+<!-- ── SIDEBAR ── -->
 <aside class="sidebar" id="sidebar">
   <div class="sb-logo">
     <div class="logo-icon">📊</div>
@@ -128,10 +120,12 @@
 
 <div class="overlay" id="overlay" onclick="closeSidebar()"></div>
 
+<!-- ── TOPBAR ── -->
 <div class="topbar" id="topbar">
   <div class="topbar-left">
     <button class="ham-btn" onclick="toggleSidebar()"><span></span><span></span><span></span></button>
-    <div>
+    <!-- FIX: wrapped in .topbar-title-block so overflow:hidden truncates correctly -->
+    <div class="topbar-title-block">
       <div class="page-title" id="pageTitle">Dashboard Overview</div>
       <div class="page-breadcrumb">
         <span>VyapaarIQ</span><span class="bc-sep">›</span>
@@ -159,6 +153,7 @@
   </div>
 </div>
 
+<!-- ── MAIN ── -->
 <main class="main" id="main">
 
   <!-- PANEL: OVERVIEW -->
@@ -190,43 +185,75 @@
         <div class="kpi-ch up" id="kpi-top-product-ch">● Loading…</div>
       </div>
     </div>
+
     <div class="quick-stats">
       <div class="qs-card"><div class="qs-icon" style="background:rgba(0,212,255,.1)">🛒</div><div><div class="qs-val" id="qs-purchases">—</div><div class="qs-lbl">TOTAL PURCHASES</div></div></div>
       <div class="qs-card"><div class="qs-icon" style="background:rgba(138,124,255,.1)">📦</div><div><div class="qs-val" id="qs-products">—</div><div class="qs-lbl">TOTAL PRODUCTS</div></div></div>
       <div class="qs-card"><div class="qs-icon" style="background:rgba(245,158,11,.1)">💳</div><div><div class="qs-val" id="qs-expenses">—</div><div class="qs-lbl">TOTAL EXPENSES</div></div></div>
       <div class="qs-card"><div class="qs-icon" style="background:rgba(34,216,122,.1)">🤝</div><div><div class="qs-val" id="qs-suppliers">—</div><div class="qs-lbl">ACTIVE SUPPLIERS</div></div></div>
     </div>
+
     <div class="overview-grid">
-      <div class="chart-card revenue-chart-card">
-        <div class="chart-title">Monthly Revenue Trend <span class="chart-badge">Last 24 months · ₹</span></div>
-        <div class="rev-chart-wrapper">
-          <div class="rev-chart-yaxis"></div>
-          <div id="revBars" class="rev-chart"></div>
+
+      <!-- REVENUE TREND CHART
+           FIX: id="revBars" is now on .rev-chart-wrapper (the outermost div).
+           JS builds:  .rev-chart-wrapper > .rev-chart-scroll > .rev-chart > .rev-col×N
+           The old .rev-chart-yaxis and inner .rev-chart divs are removed — JS owns this. -->
+      <div class="chart-card">
+        <div class="chart-title">
+          Monthly Revenue Trend
+          <span class="chart-badge">Last 24 months · ₹</span>
+        </div>
+        <div class="rev-chart-wrapper" id="revBars">
+          <!-- populated by renderRevChart() in dashboard.js -->
         </div>
       </div>
+
+      <!-- RECENT ACTIVITY -->
       <div class="activity-feed">
-        <div class="chart-title" style="margin-bottom:12px">Recent Activity <span class="chart-badge">Live</span></div>
+        <div class="chart-title" style="margin-bottom:12px">
+          Recent Activity
+          <span class="chart-badge">Live</span>
+        </div>
         <div id="activityFeed">
-          <div class="feed-item"><div class="feed-dot" style="background:var(--cyan)"></div><div class="feed-text"><strong>Dashboard loaded</strong><span>VyapaarIQ analytics ready</span><div class="feed-time">Just now</div></div></div>
-          <div class="feed-item"><div class="feed-dot" style="background:var(--amber)"></div><div class="feed-text"><strong>Fetching KPI data…</strong><span>Connecting to /api/dashboard-summary</span><div class="feed-time">0s ago</div></div></div>
+          <div class="feed-item">
+            <div class="feed-dot" style="background:var(--cyan)"></div>
+            <div class="feed-text">
+              <strong>Dashboard loaded</strong>
+              <span>VyapaarIQ analytics ready</span>
+              <div class="feed-time">Just now</div>
+            </div>
+          </div>
+          <div class="feed-item">
+            <div class="feed-dot" style="background:var(--amber)"></div>
+            <div class="feed-text">
+              <strong>Fetching KPI data…</strong>
+              <span>Connecting to /api/dashboard-summary</span>
+              <div class="feed-time">0s ago</div>
+            </div>
+          </div>
         </div>
       </div>
+
+    </div><!-- /overview-grid -->
+
+    <!-- DEMO BANNER (shown after demo data is loaded) -->
+    <div id="demoBanner" style="display:none; background:#fff3cd; border:1px solid #ffc107;
+         border-radius:10px; padding:12px 20px; margin-top:16px;
+         display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <span style="font-size:14px; color:#856404;">
+        📊 You are viewing <strong>demo data</strong> — Sharma General &amp; Grocery Store (2023–2024)
+      </span>
+      <button id="btnClearDemo"
+        style="padding:8px 18px; background:#dc3545; color:#fff; border:none;
+               border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">
+        🗑️ Clear Demo &amp; Use My Data
+      </button>
     </div>
-  </div>
+
+  </div><!-- /panel-overview -->
 
 
-<div id="demoBanner" style="display:none; background:#fff3cd; border:1px solid #ffc107;
-     border-radius:10px; padding:12px 20px; margin-bottom:20px;
-     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-  <span style="font-size:14px; color:#856404;">
-    📊 You are viewing <strong>demo data</strong> — Sharma General & Grocery Store (2023–2024)
-  </span>
-  <button id="btnClearDemo"
-    style="padding:8px 18px; background:#dc3545; color:#fff; border:none;
-           border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">
-    🗑️ Clear Demo & Use My Data
-  </button>
-</div>  
   <!-- PANEL: BUSINESS PROFILE -->
   <div class="panel" id="panel-profile">
     <div class="sec-head">
@@ -467,66 +494,37 @@
     </div>
   </div>
 
-</main>
+</main><!-- /main -->
 
 <div id="toast-container"></div>
 
 <script src="/static/js/dashboard.js"></script>
 <script>
 (function () {
-  // ── Check if user has data on page load ──────────────────────────────────
   async function checkDemoStatus() {
     try {
       const res  = await fetch("/api/demo-status");
       const data = await res.json();
- 
-      if (!data.has_data) {
-        // First login — show modal
-        showModal();
-      } else {
-        // Has data — check if it might be demo data (optional: you can skip this)
-        hideBanner(); // or showBanner() if you track demo state in session
-      }
-    } catch (e) {
-      console.error("Demo status check failed", e);
-    }
+      if (!data.has_data) { showModal(); }
+      else { hideBanner(); }
+    } catch (e) { console.error("Demo status check failed", e); }
   }
- 
-  function showModal() {
-    const modal = document.getElementById("demoModal");
-    modal.style.display = "flex";
-  }
- 
-  function hideModal() {
-    document.getElementById("demoModal").style.display = "none";
-  }
- 
-  function showBanner() {
-    const b = document.getElementById("demoBanner");
-    if (b) b.style.display = "flex";
-  }
- 
-  function hideBanner() {
-    const b = document.getElementById("demoBanner");
-    if (b) b.style.display = "none";
-  }
- 
-  // ── Load demo data ────────────────────────────────────────────────────────
+
+  function showModal() { document.getElementById("demoModal").style.display = "flex"; }
+  function hideModal() { document.getElementById("demoModal").style.display = "none"; }
+  function showBanner() { const b = document.getElementById("demoBanner"); if(b) b.style.display = "flex"; }
+  function hideBanner() { const b = document.getElementById("demoBanner"); if(b) b.style.display = "none"; }
+
   document.getElementById("btnLoadDemo").addEventListener("click", async () => {
     document.getElementById("btnLoadDemo").disabled  = true;
     document.getElementById("btnSkipDemo").disabled  = true;
     document.getElementById("demoLoading").style.display = "block";
- 
     try {
       const res  = await fetch("/api/load-demo-data", { method: "POST" });
       const data = await res.json();
- 
       if (data.success) {
-        hideModal();
-        showBanner();
-        // Reload all dashboard widgets
-        if (typeof loadDashboard === "function") loadDashboard();
-        else location.reload();
+        hideModal(); showBanner();
+        if (typeof loadKPIs === "function") loadKPIs(); else location.reload();
       } else {
         alert("Failed to load demo data: " + (data.error || "Unknown error"));
         document.getElementById("btnLoadDemo").disabled = false;
@@ -540,29 +538,21 @@
       document.getElementById("demoLoading").style.display = "none";
     }
   });
- 
-  // ── Skip demo ─────────────────────────────────────────────────────────────
-  document.getElementById("btnSkipDemo").addEventListener("click", () => {
-    hideModal();
-  });
- 
-  // ── Clear demo data ───────────────────────────────────────────────────────
+
+  document.getElementById("btnSkipDemo").addEventListener("click", () => { hideModal(); });
+
   const clearBtn = document.getElementById("btnClearDemo");
   if (clearBtn) {
     clearBtn.addEventListener("click", async () => {
       if (!confirm("This will delete all demo data. You can then import your own. Continue?")) return;
- 
       clearBtn.textContent = "Clearing…";
       clearBtn.disabled    = true;
- 
       try {
         const res  = await fetch("/api/clear-demo-data", { method: "POST" });
         const data = await res.json();
- 
         if (data.success) {
           hideBanner();
-          if (typeof loadDashboard === "function") loadDashboard();
-          else location.reload();
+          if (typeof loadKPIs === "function") loadKPIs(); else location.reload();
         } else {
           alert("Failed to clear: " + (data.error || "Unknown error"));
           clearBtn.textContent = "🗑️ Clear Demo & Use My Data";
@@ -575,8 +565,7 @@
       }
     });
   }
- 
-  // ── Init ──────────────────────────────────────────────────────────────────
+
   checkDemoStatus();
 })();
 </script>
