@@ -9,7 +9,7 @@ import zipfile
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
-
+from database.demo_loader import load_demo_data, clear_demo_data, has_any_data
 from database.db_utils import (
     execute_query,
     get_db,
@@ -1792,6 +1792,43 @@ def inventory_value():
     return jsonify({
         "inventory_value": value
     })
+
+# ================= DEMO DATA ROUTES =================
+
+@app.route("/api/demo-status")
+@login_required
+def demo_status():
+    conn = get_db()
+    user_id = _current_user_id()
+    has_data = has_any_data(conn, user_id)
+    conn.close()
+    return jsonify({"has_data": has_data})
+
+
+@app.route("/api/load-demo-data", methods=["POST"])
+@login_required
+def api_load_demo_data():
+    user_id = _current_user_id()
+    conn = get_db()
+    try:
+        result = load_demo_data(conn, user_id)
+        return jsonify(result), 200 if result["success"] else 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/clear-demo-data", methods=["POST"])
+@login_required
+def api_clear_demo_data():
+    user_id = _current_user_id()
+    conn = get_db()
+    try:
+        result = clear_demo_data(conn, user_id)
+        return jsonify(result), 200 if result["success"] else 500
+    finally:
+        conn.close()
+
+
 
 # ================= RUN SERVER =================
 
