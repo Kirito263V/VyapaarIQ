@@ -33,21 +33,62 @@ This reflects how analytics tools actually behave in real business environments 
 
 ## Screenshots
 
-**Dashboard Overview**
+### Dashboard Overview
 
-Shows live KPIs, monthly revenue trend and low inventory alerts
+![Dashboard Overview](docs/screenshots/dashboard-overview.png)
 
-**Analytics Workspace**
-
-Interactive filtering across 30 / 90 / 180 / 365 day windows
-
-**Mobile View**
-
-Fully responsive layout built for business owners using phones
-
-(Add screenshots inside `docs/screenshots/` and link them here)
+Real-time KPI dashboard with monthly revenue trend and inventory alerts.
 
 ---
+
+### Analytics Workspace Summary
+
+![Analytics Summary](docs/screenshots/analytics-summary.png)
+
+Interactive analytics workspace showing revenue, profit, inventory value and expense intelligence.
+
+---
+
+### Sales Intelligence
+
+![Sales Analysis](docs/screenshots/sales-analysis.png)
+
+Revenue trend analysis and product-level performance tracking.
+
+---
+
+### Customer Intelligence
+
+![Customer Analysis](docs/screenshots/customer-analysis.png)
+
+Customer segmentation and top-revenue contributor tracking.
+
+---
+
+### Expense Intelligence
+
+![Expense Analysis](docs/screenshots/expense-analysis.png)
+
+Category-wise operating expense distribution with month-over-month comparison.
+
+---
+
+### Profit Analytics
+
+![Profit Analysis](docs/screenshots/profit-analysis.png)
+
+Profitability breakdown including revenue vs cost trend, gross margin, net margin and ROI metrics.
+
+
+---
+
+### Inventory Intelligence
+
+![Inventory Analysis](docs/screenshots/inventory-analysis.png)
+
+Stock depth analysis with reorder-level monitoring and product-level inventory insights.
+
+
 
 ## Features
 
